@@ -1,4 +1,4 @@
-import { chromium, Browser, BrowserContext } from 'playwright';
+import { chromium, Browser, BrowserContext, BrowserContextOptions } from 'playwright';
 
 export interface BrowserManagerOptions {
   headless?: boolean;
@@ -20,9 +20,12 @@ export class BrowserManager {
     return this.browser;
   }
 
-  async createContext(options: BrowserManagerOptions = {}): Promise<BrowserContext> {
-    const browser = await this.getBrowser(options);
-    return browser.newContext();
+  async createContext(
+    contextOptions: BrowserContextOptions = {},
+    managerOptions: BrowserManagerOptions = {}
+  ): Promise<BrowserContext> {
+    const browser = await this.getBrowser(managerOptions);
+    return browser.newContext(contextOptions);
   }
 
   async isHealthy(): Promise<boolean> {
