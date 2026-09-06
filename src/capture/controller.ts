@@ -1,5 +1,6 @@
 import { BrowserManager, browserManager } from '@/browser/browser-manager';
 import { ScreenshotEngine, screenshotEngine } from './screenshot-engine';
+import { RecordingEngine, recordingEngine } from './recording-engine';
 import { isValidUrl } from '@/utils';
 import {
   CaptureOptions,
@@ -10,14 +11,17 @@ import {
 export class CaptureController {
   private browserMgr: BrowserManager;
   private screenshotEng: ScreenshotEngine;
+  private recordingEng: RecordingEngine;
   private activeCount: number = 0;
 
   constructor(
     manager: BrowserManager = browserManager,
-    engine: ScreenshotEngine = screenshotEngine
+    screenshotEng: ScreenshotEngine = screenshotEngine,
+    recEngine: RecordingEngine = recordingEngine
   ) {
     this.browserMgr = manager;
-    this.screenshotEng = engine;
+    this.screenshotEng = screenshotEng;
+    this.recordingEng = recEngine;
   }
 
   async getStatus(): Promise<CaptureControllerStatus> {
@@ -37,6 +41,60 @@ export class CaptureController {
       return { valid: false, message: 'Invalid URL format (must start with http:// or https://)' };
     }
     return { valid: true };
+  }
+
+  async capture(options: CaptureOptions): Promise<CaptureResult> {
+    if (options.type === 'recording') {
+      return this.captureRecording(options);
+    }
+    return this.captureScreenshot(options);
+  }
+
+  async captureRecording(options: CaptureOptions): Promise<CaptureResult> {
+    const createdAt = new Date().toISOString();
+    const validation = this.validateOptions(options);
+
+    if (!validation.valid) {
+      return {
+        id: `cap_${Date.now()}`,
+        type: 'recording',
+        status: 'failed',
+        url: options.url || '',
+        error: validation.message,
+        createdAt,
+      };
+    }
+
+    this.activeCount++;
+    try {
+      const result = await this.recordingEng.record(options);
+      const completedAt = new Date().toISOString();
+
+      if (result.status === 'completed' && result.metadata) {
+        return {
+          id: result.id,
+          type: 'recording',
+          status: 'completed',
+          url: options.url,
+          outputPath: result.metadata.outputPath,
+          metadata: result.metadata,
+          createdAt,
+          completedAt,
+        };
+      } else {
+        return {
+          id: result.id,
+          type: 'recording',
+          status: 'failed',
+          url: options.url,
+          error: result.error || 'Recording capture failed',
+          createdAt,
+          completedAt,
+        };
+      }
+    } finally {
+      this.activeCount = Math.max(0, this.activeCount - 1);
+    }
   }
 
   async captureScreenshot(options: CaptureOptions): Promise<CaptureResult> {

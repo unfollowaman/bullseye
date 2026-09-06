@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await captureController.captureScreenshot(body);
+    const result = await captureController.capture(body);
 
     if (result.status === 'failed') {
       return NextResponse.json(result, { status: 500 });

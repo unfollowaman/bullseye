@@ -41,8 +41,42 @@ export interface ScreenshotResult {
   error?: string;
 }
 
+export interface RecordingOptions {
+  url: string;
+  viewport?: ViewportDimensions;
+  deviceScaleFactor?: number;
+  recordingDurationMs?: number;
+  durationMs?: number; // Alias for recordingDurationMs or total duration override
+  additionalWaitMs?: number;
+  timeout?: number;
+  outputDir?: string;
+  filename?: string;
+}
+
+export interface RecordingMetadata {
+  id: string;
+  url: string;
+  viewport: ViewportDimensions;
+  deviceScaleFactor: number;
+  recordingDurationMs: number;
+  actualRecordingDurationMs: number;
+  durationMs: number;
+  format: 'webm';
+  outputPath: string;
+  capturedAt: string;
+  fileSizeBytes: number;
+}
+
+export interface RecordingResult {
+  id: string;
+  status: CaptureStatus;
+  metadata?: RecordingMetadata;
+  error?: string;
+}
+
 export interface CaptureOptions extends ScreenshotOptions {
   type?: CaptureType;
+  recordingDurationMs?: number;
 }
 
 export interface CaptureResult {
@@ -51,7 +85,7 @@ export interface CaptureResult {
   status: CaptureStatus;
   url: string;
   outputPath?: string;
-  metadata?: ScreenshotMetadata;
+  metadata?: ScreenshotMetadata | RecordingMetadata;
   error?: string;
   createdAt: string;
   completedAt?: string;

@@ -10,3 +10,5 @@ export function isValidUrl(urlStr: string): boolean {
     return false;
   }
 }
+
+export { validateWebM, type WebMValidationResult } from './webm-validator';
