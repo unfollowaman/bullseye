@@ -135,7 +135,7 @@ export class CaptureController {
 
   // Main execution entrypoint for unified captures
   async executeJob(config: UnifiedCaptureConfig): Promise<UnifiedCaptureResult> {
-    const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const jobId = config.id || `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const createdAt = new Date().toISOString();
     const rawType = config.captureType ?? config.type ?? 'screenshot';
 
@@ -229,6 +229,7 @@ export class CaptureController {
           config.screenshotOptions?.filename ??
           (rawType === 'both' ? `screenshot-${jobId}.png` : config.filename ?? `screenshot-${jobId}.png`);
 
+        const token = this.cancellationTokens.get(jobId);
         const shotOptions: ScreenshotOptions = {
           url: config.url,
           viewport,
@@ -239,6 +240,7 @@ export class CaptureController {
           timeout,
           outputDir,
           filename: screenshotFilename,
+          cancellationToken: token,
         };
 
         screenshotResult = await this.screenshotEng.capture(shotOptions);
@@ -274,6 +276,7 @@ export class CaptureController {
           config.recordingOptions?.filename ??
           (rawType === 'both' ? `recording-${jobId}.webm` : config.filename ?? `recording-${jobId}.webm`);
 
+        const token = this.cancellationTokens.get(jobId);
         const recOptions: RecordingOptions = {
           url: config.url,
           viewport,
@@ -283,6 +286,7 @@ export class CaptureController {
           timeout,
           outputDir,
           filename: recordingFilename,
+          cancellationToken: token,
         };
 
         recordingResult = await this.recordingEng.record(recOptions);
@@ -331,6 +335,10 @@ export class CaptureController {
         } else {
           finalStatus = 'failed';
         }
+      }
+
+      if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+        return (this.jobs.get(jobId) as UnifiedCaptureResult) || this.finalizeCancelledJob(jobId);
       }
 
       job = {
@@ -471,4 +479,13 @@ export class CaptureController {
   }
 }
 
-export const captureController = new CaptureController();
+const globalForCapture = globalThis as unknown as {
+  captureController: CaptureController | undefined;
+};
+
+export const captureController =
+  globalForCapture.captureController ?? new CaptureController();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForCapture.captureController = captureController;
+}

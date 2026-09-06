@@ -99,9 +99,16 @@ export class RecordingEngine {
         await page.waitForTimeout(additionalWaitMs);
       }
 
-      // 4. Record for configured duration
+      // 4. Record for configured duration (with cancellation checks)
       const recStart = Date.now();
-      await page.waitForTimeout(recordingDurationMs);
+      const sliceMs = 100;
+      while (Date.now() - recStart < recordingDurationMs) {
+        if (options.cancellationToken?.cancelled) {
+          throw new Error('Recording cancelled by user');
+        }
+        const remaining = recordingDurationMs - (Date.now() - recStart);
+        await page.waitForTimeout(Math.min(sliceMs, remaining));
+      }
       const actualRecordingDurationMs = Date.now() - recStart;
 
       // 5. Finalize video by closing page/context and saving video stream
