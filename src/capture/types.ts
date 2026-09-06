@@ -22,6 +22,7 @@ export interface ScreenshotOptions {
   timeout?: number; // Timeout in milliseconds
   outputDir?: string;
   filename?: string;
+  cancellationToken?: { cancelled: boolean };
 }
 
 export interface ScreenshotMetadata {
@@ -53,6 +54,7 @@ export interface RecordingOptions {
   timeout?: number;
   outputDir?: string;
   filename?: string;
+  cancellationToken?: { cancelled: boolean };
 }
 
 export interface RecordingMetadata {
@@ -105,6 +107,7 @@ export interface TimeoutOptions {
 }
 
 export interface UnifiedCaptureConfig {
+  id?: string;
   url: string;
   captureType?: UnifiedCaptureType;
   type?: UnifiedCaptureType; // Alias for captureType
