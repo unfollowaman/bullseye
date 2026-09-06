@@ -12,6 +12,103 @@ export function startTestServer(): Promise<TestServer> {
     const server = http.createServer((req, res) => {
       const url = req.url || '/';
 
+      if (url === '/actions') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Actions Test Fixture</title>
+            <style>
+              body { margin: 0; padding: 0; font-family: sans-serif; width: 1280px; min-height: 3000px; }
+              .section { padding: 20px; border-bottom: 1px solid #ccc; }
+              #click-box {
+                position: absolute; left: 50px; top: 50px; width: 150px; height: 50px;
+                background: #3b82f6; color: white; line-height: 50px; text-align: center; cursor: pointer;
+              }
+              #hover-box {
+                position: absolute; left: 50px; top: 150px; width: 150px; height: 50px;
+                background: #10b981; color: white; line-height: 50px; text-align: center;
+              }
+              #mouse-box {
+                position: absolute; left: 50px; top: 250px; width: 300px; height: 50px;
+                background: #8b5cf6; color: white; line-height: 50px; padding-left: 10px;
+              }
+              #input-section { position: absolute; left: 50px; top: 350px; width: 400px; }
+              #key-section { position: absolute; left: 50px; top: 450px; width: 400px; }
+              #scroll-section { position: fixed; right: 20px; top: 20px; background: yellow; padding: 10px; border: 1px solid black; }
+              .spacer { height: 2500px; background: #f3f4f6; margin-top: 600px; }
+            </style>
+          </head>
+          <body>
+            <div id="scroll-section">Scroll Y: <span id="scroll-output">0</span></div>
+
+            <div id="click-box" onclick="handleClick()">Click Target</div>
+            <div id="click-output" style="position: absolute; left: 220px; top: 65px;">Not Clicked</div>
+
+            <div id="hover-box" onmouseenter="handleHover(true)" onmouseleave="handleHover(false)">Hover Target</div>
+            <div id="hover-output" style="position: absolute; left: 220px; top: 165px;">Not Hovered</div>
+
+            <div id="mouse-box">Mouse X: <span id="mouse-x">0</span>, Y: <span id="mouse-y">0</span></div>
+
+            <div id="input-section">
+              <label for="text-input">Input:</label>
+              <input id="text-input" type="text" oninput="handleInput(event)" />
+              <div>Typed Text: <span id="text-output"></span></div>
+            </div>
+
+            <div id="key-section">
+              <label for="key-input">Key Target:</label>
+              <input id="key-input" type="text" onkeydown="handleKeyDown(event)" />
+              <div>Last Key: <span id="key-output">None</span></div>
+              <div>Modifiers: <span id="key-modifiers">None</span></div>
+            </div>
+
+            <div class="spacer">Deep Scrollable Content Spacer</div>
+
+            <script>
+              let clickCount = 0;
+              function handleClick() {
+                clickCount++;
+                document.getElementById('click-output').textContent = 'Button Clicked ' + clickCount;
+                document.getElementById('click-box').setAttribute('data-clicked', 'true');
+              }
+
+              function handleHover(isHovered) {
+                document.getElementById('hover-output').textContent = isHovered ? 'Hovered!' : 'Not Hovered';
+                document.getElementById('hover-box').setAttribute('data-hovered', isHovered ? 'true' : 'false');
+              }
+
+              window.addEventListener('mousemove', (e) => {
+                document.getElementById('mouse-x').textContent = Math.round(e.clientX);
+                document.getElementById('mouse-y').textContent = Math.round(e.clientY);
+              });
+
+              function handleInput(e) {
+                document.getElementById('text-output').textContent = e.target.value;
+                document.getElementById('text-input').setAttribute('data-value', e.target.value);
+              }
+
+              function handleKeyDown(e) {
+                document.getElementById('key-output').textContent = e.key;
+                const mods = [];
+                if (e.ctrlKey) mods.push('Control');
+                if (e.shiftKey) mods.push('Shift');
+                if (e.altKey) mods.push('Alt');
+                if (e.metaKey) mods.push('Meta');
+                document.getElementById('key-modifiers').textContent = mods.length > 0 ? mods.join('+') : 'None';
+              }
+
+              window.addEventListener('scroll', () => {
+                document.getElementById('scroll-output').textContent = Math.round(window.scrollY);
+              });
+            </script>
+          </body>
+          </html>
+        `);
+        return;
+      }
+
       if (url === '/slow') {
         // Route that delays response header/body by 10s
         setTimeout(() => {

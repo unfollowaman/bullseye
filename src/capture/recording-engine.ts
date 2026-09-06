@@ -6,11 +6,13 @@ import { BrowserManager, browserManager } from '@/browser/browser-manager';
 import { isValidUrl, validateWebM } from '@/utils';
 import { PageStabilizer } from './stabilizer';
 import { getSecureOutputPath } from './path-utils';
+import { ActionExecutor, actionExecutor } from './action-executor';
 import {
   RecordingOptions,
   RecordingResult,
   RecordingMetadata,
   ViewportDimensions,
+  ActionDiagnostic,
 } from './types';
 
 const DEFAULT_VIEWPORT: ViewportDimensions = { width: 1280, height: 720 };
@@ -19,9 +21,14 @@ const DEFAULT_RECORDING_DURATION = 5000;
 
 export class RecordingEngine {
   private browserMgr: BrowserManager;
+  private actionEng: ActionExecutor;
 
-  constructor(manager: BrowserManager = browserManager) {
+  constructor(
+    manager: BrowserManager = browserManager,
+    actionEng: ActionExecutor = actionExecutor
+  ) {
     this.browserMgr = manager;
+    this.actionEng = actionEng;
   }
 
   async record(options: RecordingOptions): Promise<RecordingResult> {
@@ -71,6 +78,7 @@ export class RecordingEngine {
 
     let context: BrowserContext | null = null;
     let page: Page | null = null;
+    let actionDiagnostics: ActionDiagnostic[] | undefined;
 
     try {
       if (options.cancellationToken?.cancelled) {
@@ -113,7 +121,7 @@ export class RecordingEngine {
         throw new Error('Recording cancelled by user');
       }
 
-      // 3. Stabilization / initial wait before recording timeframe
+      // 3. Stabilization / initial wait before action execution
       await PageStabilizer.stabilize(page, {
         additionalWaitMs,
         timeout,
@@ -123,19 +131,41 @@ export class RecordingEngine {
         throw new Error('Recording cancelled by user');
       }
 
-      // 4. Record for configured duration (with cancellation checks)
       const recStart = Date.now();
-      const sliceMs = 100;
-      while (Date.now() - recStart < recordingDurationMs) {
+
+      // 4. Execute actions while video is actively recording
+      if (options.actions && options.actions.length > 0) {
+        const actionResult = await this.actionEng.execute(page, options.actions, {
+          cancellationToken: options.cancellationToken,
+          defaultTimeoutMs: timeout,
+        });
+
+        actionDiagnostics = actionResult.diagnostics;
+
+        if (!actionResult.success) {
+          throw new Error(actionResult.error || 'Action execution failed');
+        }
+
         if (options.cancellationToken?.cancelled) {
           throw new Error('Recording cancelled by user');
         }
-        const remaining = recordingDurationMs - (Date.now() - recStart);
+      }
+
+      // 5. Record for remaining configured duration (if actions finished earlier)
+      const elapsedActionTime = Date.now() - recStart;
+      const targetDuration = Math.max(recordingDurationMs, elapsedActionTime);
+
+      const sliceMs = 100;
+      while (Date.now() - recStart < targetDuration) {
+        if (options.cancellationToken?.cancelled) {
+          throw new Error('Recording cancelled by user');
+        }
+        const remaining = targetDuration - (Date.now() - recStart);
         await page.waitForTimeout(Math.min(sliceMs, remaining));
       }
       const actualRecordingDurationMs = Date.now() - recStart;
 
-      // 5. Finalize video by closing page/context and saving video stream
+      // 6. Finalize video by closing page/context and saving video stream
       const video = page.video();
       if (!video) {
         throw new Error('Video recording failed: Playwright video instance was not created');
@@ -150,7 +180,7 @@ export class RecordingEngine {
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
       await video.saveAs(outputPath);
 
-      // 6. Validate output WebM file
+      // 7. Validate output WebM file
       const validation = validateWebM(outputPath);
       if (!validation.valid) {
         throw new Error(`Recorded video finalization failed: ${validation.error}`);
@@ -164,19 +194,21 @@ export class RecordingEngine {
         url: options.url,
         viewport,
         deviceScaleFactor,
-        recordingDurationMs,
+        recordingDurationMs: targetDuration,
         actualRecordingDurationMs,
         durationMs,
         format: 'webm',
         outputPath,
         capturedAt: new Date(endTime).toISOString(),
         fileSizeBytes: validation.sizeBytes,
+        actionDiagnostics,
       };
 
       return {
         id,
         status: 'completed',
         metadata,
+        actionDiagnostics,
       };
     } catch (err: unknown) {
       const normalizedErr = PageStabilizer.normalizeError(err, options.url, timeout);
@@ -188,9 +220,10 @@ export class RecordingEngine {
         id,
         status: 'failed',
         error: normalizedErr.message,
+        actionDiagnostics,
       };
     } finally {
-      // 7. Cleanup resources & temporary recording artifacts
+      // 8. Cleanup resources & temporary recording artifacts
       if (page) {
         await page.close().catch(() => {});
       }
