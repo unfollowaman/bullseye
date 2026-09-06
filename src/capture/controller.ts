@@ -1,4 +1,5 @@
 import { BrowserManager, browserManager } from '@/browser/browser-manager';
+import { ScreenshotEngine, screenshotEngine } from './screenshot-engine';
 import { isValidUrl } from '@/utils';
 import {
   CaptureOptions,
@@ -8,10 +9,15 @@ import {
 
 export class CaptureController {
   private browserMgr: BrowserManager;
+  private screenshotEng: ScreenshotEngine;
   private activeCount: number = 0;
 
-  constructor(manager: BrowserManager = browserManager) {
+  constructor(
+    manager: BrowserManager = browserManager,
+    engine: ScreenshotEngine = screenshotEngine
+  ) {
     this.browserMgr = manager;
+    this.screenshotEng = engine;
   }
 
   async getStatus(): Promise<CaptureControllerStatus> {
@@ -33,27 +39,56 @@ export class CaptureController {
     return { valid: true };
   }
 
-  // Phase 1 stub for future capture implementation
-  async executeCaptureStub(options: CaptureOptions): Promise<CaptureResult> {
+  async captureScreenshot(options: CaptureOptions): Promise<CaptureResult> {
+    const createdAt = new Date().toISOString();
     const validation = this.validateOptions(options);
+
     if (!validation.valid) {
       return {
         id: `cap_${Date.now()}`,
         type: 'screenshot',
         status: 'failed',
-        url: options.url,
+        url: options.url || '',
         error: validation.message,
-        createdAt: new Date().toISOString(),
+        createdAt,
       };
     }
 
-    return {
-      id: `cap_${Date.now()}`,
-      type: 'screenshot',
-      status: 'idle',
-      url: options.url,
-      createdAt: new Date().toISOString(),
-    };
+    this.activeCount++;
+    try {
+      const result = await this.screenshotEng.capture(options);
+      const completedAt = new Date().toISOString();
+
+      if (result.status === 'completed' && result.metadata) {
+        return {
+          id: result.id,
+          type: 'screenshot',
+          status: 'completed',
+          url: options.url,
+          outputPath: result.metadata.outputPath,
+          metadata: result.metadata,
+          createdAt,
+          completedAt,
+        };
+      } else {
+        return {
+          id: result.id,
+          type: 'screenshot',
+          status: 'failed',
+          url: options.url,
+          error: result.error || 'Screenshot capture failed',
+          createdAt,
+          completedAt,
+        };
+      }
+    } finally {
+      this.activeCount = Math.max(0, this.activeCount - 1);
+    }
+  }
+
+  // Backwards-compatible alias for Phase 1 stub tests
+  async executeCaptureStub(options: CaptureOptions): Promise<CaptureResult> {
+    return this.captureScreenshot(options);
   }
 }
 
