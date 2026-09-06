@@ -4,6 +4,8 @@ import os from 'os';
 import { BrowserContext, Page } from 'playwright';
 import { BrowserManager, browserManager } from '@/browser/browser-manager';
 import { isValidUrl, validateWebM } from '@/utils';
+import { PageStabilizer } from './stabilizer';
+import { getSecureOutputPath } from './path-utils';
 import {
   RecordingOptions,
   RecordingResult,
@@ -14,7 +16,6 @@ import {
 const DEFAULT_VIEWPORT: ViewportDimensions = { width: 1280, height: 720 };
 const DEFAULT_TIMEOUT = 30000;
 const DEFAULT_RECORDING_DURATION = 5000;
-const DEFAULT_OUTPUT_DIR = path.join(process.cwd(), 'public', 'captures');
 
 export class RecordingEngine {
   private browserMgr: BrowserManager;
@@ -48,9 +49,23 @@ export class RecordingEngine {
     const recordingDurationMs = options.recordingDurationMs ?? options.durationMs ?? DEFAULT_RECORDING_DURATION;
     const additionalWaitMs = options.additionalWaitMs ?? 0;
     const timeout = options.timeout ?? DEFAULT_TIMEOUT;
-    const outputDir = options.outputDir ?? DEFAULT_OUTPUT_DIR;
-    const filename = options.filename ?? `recording-${id}.webm`;
-    const outputPath = path.isAbsolute(filename) ? filename : path.join(outputDir, filename);
+
+    let outputPath: string;
+    try {
+      const secureResult = getSecureOutputPath(
+        options.outputDir,
+        options.filename,
+        `recording-${id}`,
+        '.webm'
+      );
+      outputPath = secureResult.safePath;
+    } catch (err) {
+      return {
+        id,
+        status: 'failed',
+        error: err instanceof Error ? err.message : 'Path security error',
+      };
+    }
 
     const tempDir = path.join(os.tmpdir(), `bullseye-rec-tmp-${id}`);
 
@@ -58,6 +73,10 @@ export class RecordingEngine {
     let page: Page | null = null;
 
     try {
+      if (options.cancellationToken?.cancelled) {
+        throw new Error('Recording cancelled by user');
+      }
+
       fs.mkdirSync(tempDir, { recursive: true });
 
       // 1. Create Browser Context with native Playwright video recording
@@ -80,23 +99,28 @@ export class RecordingEngine {
       page.setDefaultTimeout(timeout);
       page.setDefaultNavigationTimeout(timeout);
 
-      // 2. Navigate to URL
+      // 2. Navigate to URL with normalized error handling
       try {
         await page.goto(options.url, {
           waitUntil: 'domcontentloaded',
           timeout,
         });
       } catch (err: unknown) {
-        const errorObj = err as { name?: string; message?: string };
-        if (errorObj.name === 'TimeoutError' || errorObj.message?.includes('timeout')) {
-          throw new Error(`Navigation timeout of ${timeout}ms exceeded while loading ${options.url}`);
-        }
-        throw new Error(`Failed to navigate to ${options.url}: ${errorObj.message || err}`);
+        throw PageStabilizer.normalizeError(err, options.url, timeout);
       }
 
-      // 3. Optional initial wait before recording timeframe
-      if (additionalWaitMs > 0) {
-        await page.waitForTimeout(additionalWaitMs);
+      if (options.cancellationToken?.cancelled) {
+        throw new Error('Recording cancelled by user');
+      }
+
+      // 3. Stabilization / initial wait before recording timeframe
+      await PageStabilizer.stabilize(page, {
+        additionalWaitMs,
+        timeout,
+      });
+
+      if (options.cancellationToken?.cancelled) {
+        throw new Error('Recording cancelled by user');
       }
 
       // 4. Record for configured duration (with cancellation checks)
@@ -155,11 +179,15 @@ export class RecordingEngine {
         metadata,
       };
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown recording error';
+      const normalizedErr = PageStabilizer.normalizeError(err, options.url, timeout);
+      // Clean up orphaned output file if present
+      if (fs.existsSync(outputPath!)) {
+        try { fs.unlinkSync(outputPath!); } catch {}
+      }
       return {
         id,
         status: 'failed',
-        error: errorMessage,
+        error: normalizedErr.message,
       };
     } finally {
       // 7. Cleanup resources & temporary recording artifacts
