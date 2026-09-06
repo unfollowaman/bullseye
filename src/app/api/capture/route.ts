@@ -1,26 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { captureController } from '@/capture/controller';
-import { CaptureOptions } from '@/capture/types';
+import { UnifiedCaptureConfig } from '@/capture/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const body: CaptureOptions = await request.json();
+    const body: UnifiedCaptureConfig = await request.json();
 
-    const validation = captureController.validateOptions(body);
+    const validation = captureController.validateConfig(body);
     if (!validation.valid) {
       return NextResponse.json(
-        { error: validation.message },
+        { error: validation.errors.join('; '), errors: validation.errors },
         { status: 400 }
       );
     }
 
-    const result = await captureController.capture(body);
+    const jobResult = await captureController.executeJob(body);
 
-    if (result.status === 'failed') {
-      return NextResponse.json(result, { status: 500 });
+    if (jobResult.status === 'failed') {
+      return NextResponse.json(jobResult, { status: 500 });
     }
 
-    return NextResponse.json(result, { status: 200 });
+    // Return 200 OK for completed or partial completion
+    return NextResponse.json(jobResult, { status: 200 });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Internal server error';
     return NextResponse.json(

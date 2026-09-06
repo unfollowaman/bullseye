@@ -53,6 +53,8 @@ describe('CaptureController Stub', () => {
     const status = await controller.getStatus();
 
     expect(status.ready).toBe(true);
-    expect(status.supportedTypes).toEqual(['screenshot', 'recording']);
+    expect(status.supportedTypes).toContain('screenshot');
+    expect(status.supportedTypes).toContain('recording');
+    expect(status.supportedTypes).toContain('both');
   });
 });
