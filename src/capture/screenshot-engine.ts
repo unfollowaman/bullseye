@@ -5,12 +5,14 @@ import { BrowserManager, browserManager } from '@/browser/browser-manager';
 import { isValidUrl } from '@/utils';
 import { PageStabilizer } from './stabilizer';
 import { getSecureOutputPath } from './path-utils';
+import { ActionExecutor, actionExecutor } from './action-executor';
 import {
   ScreenshotOptions,
   ScreenshotResult,
   ScreenshotMetadata,
   ViewportDimensions,
   ScreenshotMode,
+  ActionDiagnostic,
 } from './types';
 
 const DEFAULT_VIEWPORT: ViewportDimensions = { width: 1280, height: 720 };
@@ -18,9 +20,14 @@ const DEFAULT_TIMEOUT = 30000;
 
 export class ScreenshotEngine {
   private browserMgr: BrowserManager;
+  private actionEng: ActionExecutor;
 
-  constructor(manager: BrowserManager = browserManager) {
+  constructor(
+    manager: BrowserManager = browserManager,
+    actionEng: ActionExecutor = actionExecutor
+  ) {
     this.browserMgr = manager;
+    this.actionEng = actionEng;
   }
 
   async capture(options: ScreenshotOptions): Promise<ScreenshotResult> {
@@ -70,6 +77,7 @@ export class ScreenshotEngine {
 
     let context: BrowserContext | null = null;
     let page: Page | null = null;
+    let actionDiagnostics: ActionDiagnostic[] | undefined;
 
     try {
       if (options.cancellationToken?.cancelled) {
@@ -115,7 +123,25 @@ export class ScreenshotEngine {
         throw new Error('Screenshot cancelled by user');
       }
 
-      // 4. Capture screenshot
+      // 4. Action Execution (if actions supplied)
+      if (options.actions && options.actions.length > 0) {
+        const actionResult = await this.actionEng.execute(page, options.actions, {
+          cancellationToken: options.cancellationToken,
+          defaultTimeoutMs: timeout,
+        });
+
+        actionDiagnostics = actionResult.diagnostics;
+
+        if (!actionResult.success) {
+          throw new Error(actionResult.error || 'Action execution failed');
+        }
+
+        if (options.cancellationToken?.cancelled) {
+          throw new Error('Screenshot cancelled by user');
+        }
+      }
+
+      // 5. Capture screenshot
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
       await page.screenshot({
@@ -138,12 +164,14 @@ export class ScreenshotEngine {
         capturedAt: new Date(endTime).toISOString(),
         durationMs,
         fileSizeBytes: fileStats.size,
+        actionDiagnostics,
       };
 
       return {
         id,
         status: 'completed',
         metadata,
+        actionDiagnostics,
       };
     } catch (err: unknown) {
       const normalizedErr = PageStabilizer.normalizeError(err, options.url, timeout);
@@ -155,9 +183,10 @@ export class ScreenshotEngine {
         id,
         status: 'failed',
         error: normalizedErr.message,
+        actionDiagnostics,
       };
     } finally {
-      // 5. Cleanup context & page safely regardless of success or error
+      // 6. Cleanup context & page safely regardless of success or error
       if (page) {
         await page.close().catch(() => {});
       }

@@ -5,6 +5,7 @@ import { ScreenshotEngine, screenshotEngine } from './screenshot-engine';
 import { RecordingEngine, recordingEngine } from './recording-engine';
 import { CaptureLogger } from './logger';
 import { isValidUrl } from '@/utils';
+import { validateActions } from './action-validator';
 import {
   CaptureOptions,
   CaptureResult,
@@ -115,6 +116,14 @@ export class CaptureController {
     if (recDuration !== undefined) {
       if (typeof recDuration !== 'number' || recDuration < 0 || isNaN(recDuration)) {
         errors.push('Recording duration must be a non-negative number (milliseconds)');
+      }
+    }
+
+    // 7. Actions validation
+    if (config.actions !== undefined) {
+      const actVal = validateActions(config.actions);
+      if (!actVal.valid) {
+        errors.push(...actVal.errors);
       }
     }
 
@@ -241,6 +250,7 @@ export class CaptureController {
           outputDir,
           filename: screenshotFilename,
           cancellationToken: token,
+          actions: config.actions,
         };
 
         screenshotResult = await this.screenshotEng.capture(shotOptions);
@@ -287,6 +297,7 @@ export class CaptureController {
           outputDir,
           filename: recordingFilename,
           cancellationToken: token,
+          actions: config.actions,
         };
 
         recordingResult = await this.recordingEng.record(recOptions);
@@ -341,6 +352,8 @@ export class CaptureController {
         return (this.jobs.get(jobId) as UnifiedCaptureResult) || this.finalizeCancelledJob(jobId);
       }
 
+      const actionDiagnostics = screenshotResult?.actionDiagnostics ?? recordingResult?.actionDiagnostics;
+
       job = {
         ...job,
         status: finalStatus,
@@ -348,6 +361,7 @@ export class CaptureController {
         recordingResult,
         timestamps: { ...job.timestamps, completedAt },
         durations: { totalMs, screenshotMs, recordingMs },
+        actionDiagnostics,
       };
 
       this.jobs.set(jobId, job);

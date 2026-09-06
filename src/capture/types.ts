@@ -1,3 +1,7 @@
+import { CaptureAction, ActionDiagnostic } from './action-types';
+
+export * from './action-types';
+
 export type CaptureType = 'screenshot' | 'recording';
 export type UnifiedCaptureType = 'screenshot' | 'recording' | 'both';
 
@@ -23,6 +27,7 @@ export interface ScreenshotOptions {
   outputDir?: string;
   filename?: string;
   cancellationToken?: { cancelled: boolean };
+  actions?: CaptureAction[];
 }
 
 export interface ScreenshotMetadata {
@@ -35,6 +40,7 @@ export interface ScreenshotMetadata {
   capturedAt: string;
   durationMs: number;
   fileSizeBytes: number;
+  actionDiagnostics?: ActionDiagnostic[];
 }
 
 export interface ScreenshotResult {
@@ -42,6 +48,7 @@ export interface ScreenshotResult {
   status: CaptureStatus;
   metadata?: ScreenshotMetadata;
   error?: string;
+  actionDiagnostics?: ActionDiagnostic[];
 }
 
 export interface RecordingOptions {
@@ -55,6 +62,7 @@ export interface RecordingOptions {
   outputDir?: string;
   filename?: string;
   cancellationToken?: { cancelled: boolean };
+  actions?: CaptureAction[];
 }
 
 export interface RecordingMetadata {
@@ -69,6 +77,7 @@ export interface RecordingMetadata {
   outputPath: string;
   capturedAt: string;
   fileSizeBytes: number;
+  actionDiagnostics?: ActionDiagnostic[];
 }
 
 export interface RecordingResult {
@@ -76,6 +85,7 @@ export interface RecordingResult {
   status: CaptureStatus;
   metadata?: RecordingMetadata;
   error?: string;
+  actionDiagnostics?: ActionDiagnostic[];
 }
 
 // Phase 1-3 legacy/convenience options format
@@ -118,6 +128,7 @@ export interface UnifiedCaptureConfig {
   stabilizationOptions?: StabilizationOptions;
   timeoutOptions?: TimeoutOptions;
   outputDir?: string;
+  actions?: CaptureAction[];
   // Flattened / legacy fallbacks for maximum usability:
   mode?: ScreenshotMode;
   fullPage?: boolean;
@@ -159,6 +170,7 @@ export interface UnifiedCaptureResult {
   durations: UnifiedCaptureDurations;
   errors: string[];
   warnings: string[];
+  actionDiagnostics?: ActionDiagnostic[];
 }
 
 // Legacy CaptureResult for backwards compatibility
