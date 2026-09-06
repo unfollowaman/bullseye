@@ -7,6 +7,10 @@
 # Node dependencies
 /node_modules/
 
+# Captures output directory (ignore generated files but keep .gitkeep if needed)
+/public/captures/*
+!/public/captures/.gitkeep
+
 # Logs
 *.log
 npm-debug.log*

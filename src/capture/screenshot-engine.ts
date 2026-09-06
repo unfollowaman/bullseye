@@ -3,6 +3,8 @@ import path from 'path';
 import { BrowserContext, Page } from 'playwright';
 import { BrowserManager, browserManager } from '@/browser/browser-manager';
 import { isValidUrl } from '@/utils';
+import { PageStabilizer } from './stabilizer';
+import { getSecureOutputPath } from './path-utils';
 import {
   ScreenshotOptions,
   ScreenshotResult,
@@ -13,7 +15,6 @@ import {
 
 const DEFAULT_VIEWPORT: ViewportDimensions = { width: 1280, height: 720 };
 const DEFAULT_TIMEOUT = 30000;
-const DEFAULT_OUTPUT_DIR = path.join(process.cwd(), 'public', 'captures');
 
 export class ScreenshotEngine {
   private browserMgr: BrowserManager;
@@ -49,14 +50,32 @@ export class ScreenshotEngine {
     const disableAnimations = options.disableAnimations ?? false;
     const additionalWaitMs = options.additionalWaitMs ?? 0;
     const timeout = options.timeout ?? DEFAULT_TIMEOUT;
-    const outputDir = options.outputDir ?? DEFAULT_OUTPUT_DIR;
-    const filename = options.filename ?? `screenshot-${id}.png`;
-    const outputPath = path.isAbsolute(filename) ? filename : path.join(outputDir, filename);
+
+    let outputPath: string;
+    try {
+      const secureResult = getSecureOutputPath(
+        options.outputDir,
+        options.filename,
+        `screenshot-${id}`,
+        '.png'
+      );
+      outputPath = secureResult.safePath;
+    } catch (err) {
+      return {
+        id,
+        status: 'failed',
+        error: err instanceof Error ? err.message : 'Path security error',
+      };
+    }
 
     let context: BrowserContext | null = null;
     let page: Page | null = null;
 
     try {
+      if (options.cancellationToken?.cancelled) {
+        throw new Error('Screenshot cancelled by user');
+      }
+
       // 1. Create Browser Context & Page
       context = await this.browserMgr.createContext({
         viewport: {
@@ -70,28 +89,33 @@ export class ScreenshotEngine {
       page.setDefaultTimeout(timeout);
       page.setDefaultNavigationTimeout(timeout);
 
-      // 2. Navigate
+      // 2. Navigate with normalized error handling
       try {
         await page.goto(options.url, {
           waitUntil: 'domcontentloaded',
           timeout,
         });
       } catch (err: unknown) {
-        const errorObj = err as { name?: string; message?: string };
-        if (errorObj.name === 'TimeoutError' || errorObj.message?.includes('timeout')) {
-          throw new Error(`Navigation timeout of ${timeout}ms exceeded while loading ${options.url}`);
-        }
-        throw new Error(`Failed to navigate to ${options.url}: ${errorObj.message || err}`);
+        throw PageStabilizer.normalizeError(err, options.url, timeout);
+      }
+
+      if (options.cancellationToken?.cancelled) {
+        throw new Error('Screenshot cancelled by user');
       }
 
       // 3. Page Stabilization
-      await this.stabilizePage(page, {
+      await PageStabilizer.stabilize(page, {
         disableAnimations,
         additionalWaitMs,
         timeout,
+        fullPage,
       });
 
-      // 4. Capture
+      if (options.cancellationToken?.cancelled) {
+        throw new Error('Screenshot cancelled by user');
+      }
+
+      // 4. Capture screenshot
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
       await page.screenshot({
@@ -122,11 +146,15 @@ export class ScreenshotEngine {
         metadata,
       };
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown screenshot error';
+      const normalizedErr = PageStabilizer.normalizeError(err, options.url, timeout);
+      // Clean up orphaned output file if present
+      if (fs.existsSync(outputPath!)) {
+        try { fs.unlinkSync(outputPath!); } catch {}
+      }
       return {
         id,
         status: 'failed',
-        error: errorMessage,
+        error: normalizedErr.message,
       };
     } finally {
       // 5. Cleanup context & page safely regardless of success or error
@@ -136,84 +164,6 @@ export class ScreenshotEngine {
       if (context) {
         await context.close().catch(() => {});
       }
-    }
-  }
-
-  private async stabilizePage(
-    page: Page,
-    options: { disableAnimations: boolean; additionalWaitMs: number; timeout: number }
-  ): Promise<void> {
-    // a. Wait for network stabilization (with fallback timeout)
-    try {
-      await page.waitForLoadState('networkidle', {
-        timeout: Math.min(options.timeout, 2000),
-      });
-    } catch {
-      // Ignore networkidle timeout if page keeps connections open
-    }
-
-    // b. Wait for document fonts
-    try {
-      await page.evaluate(async () => {
-        if ('fonts' in document) {
-          await document.fonts.ready;
-        }
-      });
-    } catch {
-      // Ignore font wait failures
-    }
-
-    // c. Wait for images to finish loading
-    try {
-      await page.evaluate(async () => {
-        const images = Array.from(document.images);
-        await Promise.all(
-          images.map((img) => {
-            if (img.complete) return Promise.resolve();
-            return new Promise((resolve) => {
-              const onDone = () => resolve(true);
-              img.addEventListener('load', onDone, { once: true });
-              img.addEventListener('error', onDone, { once: true });
-            });
-          })
-        );
-      });
-    } catch {
-      // Ignore image load wait failures
-    }
-
-    // d. Disable animations if requested
-    if (options.disableAnimations) {
-      try {
-        await page.addStyleTag({
-          content: `
-            *, *::before, *::after {
-              -webkit-transition: none !important;
-              -moz-transition: none !important;
-              -o-transition: none !important;
-              transition: none !important;
-              -webkit-animation: none !important;
-              -moz-animation: none !important;
-              -o-animation: none !important;
-              animation: none !important;
-              scroll-behavior: auto !important;
-            }
-          `,
-        });
-
-        await page.evaluate(() => {
-          if ('getAnimations' in document) {
-            document.getAnimations().forEach((anim) => anim.finish());
-          }
-        });
-      } catch {
-        // Ignore animation override failures
-      }
-    }
-
-    // e. Configurable additional wait time
-    if (options.additionalWaitMs > 0) {
-      await page.waitForTimeout(options.additionalWaitMs);
     }
   }
 }
