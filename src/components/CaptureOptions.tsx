@@ -1,21 +1,9 @@
 'use client';
 
-import React from 'react';
-import { UnifiedCaptureType, ScreenshotMode } from '@/capture/types';
-
-export interface ViewportPreset {
-  name: string;
-  width: number;
-  height: number;
-}
-
-export const VIEWPORT_PRESETS: ViewportPreset[] = [
-  { name: 'Desktop HD (1280x720)', width: 1280, height: 720 },
-  { name: 'Desktop Full HD (1920x1080)', width: 1920, height: 1080 },
-  { name: 'Mobile - iPhone (375x812)', width: 375, height: 812 },
-  { name: 'Tablet - iPad (768x1024)', width: 768, height: 1024 },
-  { name: 'Custom', width: 0, height: 0 },
-];
+import React, { useState, useEffect } from 'react';
+import { UnifiedCaptureType, ScreenshotMode, UnifiedCaptureConfig } from '@/capture/types';
+import { DevicePreset, CapturePreset } from '@/presets/types';
+import { BUILTIN_DEVICE_PRESETS } from '@/presets/devices';
 
 export interface CaptureOptionsProps {
   url: string;
@@ -26,7 +14,7 @@ export interface CaptureOptionsProps {
   setWidth: (width: number) => void;
   height: number;
   setHeight: (height: number) => void;
-  preset: string;
+  preset: string; // Device preset name / ID
   setPreset: (preset: string) => void;
   dpr: number;
   setDpr: (dpr: number) => void;
@@ -41,6 +29,8 @@ export interface CaptureOptionsProps {
   timeoutMs: number;
   setTimeoutMs: (ms: number) => void;
   disabled?: boolean;
+  onApplyCapturePreset?: (preset: CapturePreset) => void;
+  onSaveAsPreset?: (name: string, description: string) => void;
 }
 
 export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
@@ -67,14 +57,163 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
   timeoutMs,
   setTimeoutMs,
   disabled = false,
+  onApplyCapturePreset,
+  onSaveAsPreset,
 }) => {
-  const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedName = e.target.value;
-    setPreset(selectedName);
-    const found = VIEWPORT_PRESETS.find((p) => p.name === selectedName);
-    if (found && found.width > 0 && found.height > 0) {
-      setWidth(found.width);
-      setHeight(found.height);
+  const [devicePresets, setDevicePresets] = useState<DevicePreset[]>(BUILTIN_DEVICE_PRESETS);
+  const [capturePresets, setCapturePresets] = useState<CapturePreset[]>([]);
+  const [selectedCapturePresetId, setSelectedCapturePresetId] = useState<string>('');
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [newPresetDesc, setNewPresetDesc] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Fetch device and capture presets on mount
+  useEffect(() => {
+    fetch('/api/presets/devices')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: DevicePreset[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setDevicePresets(data);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/presets/capture')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: CapturePreset[]) => {
+        if (Array.isArray(data)) {
+          setCapturePresets(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Handle device preset change
+  const handleDevicePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedId = e.target.value;
+    setPreset(selectedId);
+
+    if (selectedId === 'custom') {
+      return;
+    }
+
+    const found = devicePresets.find((d) => d.id === selectedId || d.name === selectedId);
+    if (found) {
+      setWidth(found.viewport.width);
+      setHeight(found.viewport.height);
+      setDpr(found.deviceScaleFactor);
+    }
+  };
+
+  // Handle capture preset selection & application
+  const handleCapturePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const presetId = e.target.value;
+    setSelectedCapturePresetId(presetId);
+    if (!presetId) return;
+
+    const found = capturePresets.find((p) => p.id === presetId);
+    if (!found) return;
+
+    applyCapturePreset(found);
+  };
+
+  const applyCapturePreset = (presetToApply: CapturePreset) => {
+    const cfg = presetToApply.config;
+
+    if (cfg.captureType) setCaptureType(cfg.captureType);
+    if (cfg.viewport) {
+      setWidth(cfg.viewport.width);
+      setHeight(cfg.viewport.height);
+    }
+    if (cfg.deviceScaleFactor) setDpr(cfg.deviceScaleFactor);
+
+    if (cfg.devicePresetId) {
+      setPreset(cfg.devicePresetId);
+    } else {
+      setPreset('custom');
+    }
+
+    if (cfg.screenshotOptions?.mode) setMode(cfg.screenshotOptions.mode);
+    if (cfg.stabilizationOptions?.disableAnimations !== undefined) {
+      setDisableAnimations(cfg.stabilizationOptions.disableAnimations);
+    }
+    if (cfg.stabilizationOptions?.additionalWaitMs !== undefined) {
+      setAdditionalWaitMs(cfg.stabilizationOptions.additionalWaitMs);
+    }
+    const recDuration = cfg.recordingOptions?.durationMs ?? cfg.recordingDurationMs;
+    if (recDuration) setRecordingDurationMs(recDuration);
+    if (cfg.timeoutOptions?.timeoutMs !== undefined) {
+      setTimeoutMs(cfg.timeoutOptions.timeoutMs);
+    }
+
+    if (onApplyCapturePreset) {
+      onApplyCapturePreset(presetToApply);
+    }
+  };
+
+  const handleSavePresetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPresetName.trim()) return;
+
+    setSaveError(null);
+
+    const configToSave: UnifiedCaptureConfig = {
+      url: url || '',
+      captureType,
+      viewport: { width: Number(width), height: Number(height) },
+      deviceScaleFactor: Number(dpr),
+      devicePresetId: preset !== 'custom' ? preset : undefined,
+      screenshotOptions: {
+        mode,
+        fullPage: mode === 'fullPage',
+      },
+      recordingOptions: {
+        durationMs: Number(recordingDurationMs),
+      },
+      stabilizationOptions: {
+        disableAnimations,
+        additionalWaitMs: Number(additionalWaitMs),
+      },
+      timeoutOptions: {
+        timeoutMs: Number(timeoutMs),
+      },
+    };
+
+    if (onSaveAsPreset) {
+      onSaveAsPreset(newPresetName.trim(), newPresetDesc.trim());
+      setShowSaveModal(false);
+      setNewPresetName('');
+      setNewPresetDesc('');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/presets/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newPresetName.trim(),
+          description: newPresetDesc.trim(),
+          devicePresetId: preset !== 'custom' ? preset : undefined,
+          config: configToSave,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to save custom preset');
+      }
+
+      const created: CapturePreset = await res.json();
+      setCapturePresets((prev) => [...prev, created]);
+      setSelectedCapturePresetId(created.id);
+      setShowSaveModal(false);
+      setNewPresetName('');
+      setNewPresetDesc('');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      setSaveError(msg);
     }
   };
 
@@ -100,7 +239,100 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
         />
       </div>
 
-      {/* Capture Type Selection */}
+      {/* Preset Application Toolbar */}
+      <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg space-y-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex-1">
+            <label htmlFor="capture-preset-select" className="block font-semibold text-blue-900 text-xs uppercase tracking-wider mb-1">
+              Apply Capture Preset
+            </label>
+            <select
+              id="capture-preset-select"
+              data-testid="capture-preset-select"
+              value={selectedCapturePresetId}
+              onChange={handleCapturePresetChange}
+              disabled={disabled}
+              className="w-full p-2 border border-blue-300 rounded bg-white text-gray-800 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+            >
+              <option value="">-- Select a Capture Preset --</option>
+              {capturePresets.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} {p.isBuiltIn ? '(Built-in)' : '(Custom)'}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-end">
+            <button
+              type="button"
+              data-testid="save-as-preset-btn"
+              onClick={() => setShowSaveModal(true)}
+              disabled={disabled}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded text-xs transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap"
+            >
+              Save Form as Preset
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Save Preset Inline Modal */}
+      {showSaveModal && (
+        <form onSubmit={handleSavePresetSubmit} className="p-4 bg-white border-2 border-blue-500 rounded-lg shadow-md space-y-3">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+            <h4 className="font-bold text-gray-900 text-xs uppercase">Save Current Options as Preset</h4>
+            <button
+              type="button"
+              onClick={() => setShowSaveModal(false)}
+              className="text-gray-400 hover:text-gray-600 font-bold text-xs"
+            >
+              ✕
+            </button>
+          </div>
+          {saveError && <div className="p-2 bg-red-50 text-red-700 rounded text-xs">{saveError}</div>}
+          <div>
+            <label className="block text-xs font-semibold mb-1">Preset Name *</label>
+            <input
+              type="text"
+              required
+              data-testid="preset-name-input"
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              placeholder="e.g. My Custom Desktop Capture"
+              className="w-full p-2 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1">Description (Optional)</label>
+            <input
+              type="text"
+              value={newPresetDesc}
+              onChange={(e) => setNewPresetDesc(e.target.value)}
+              placeholder="e.g. Viewport capture with 5s recording"
+              className="w-full p-2 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="submit"
+              data-testid="save-preset-confirm-btn"
+              className="px-3 py-1.5 bg-blue-600 text-white font-semibold rounded text-xs hover:bg-blue-700"
+            >
+              Save Preset
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSaveModal(false)}
+              className="px-3 py-1.5 bg-gray-200 text-gray-700 font-semibold rounded text-xs hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Capture Type Selection & Device Preset */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label htmlFor="capture-type" className="block font-semibold mb-1">
@@ -108,6 +340,7 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
           </label>
           <select
             id="capture-type"
+            data-testid="capture-type-select"
             value={captureType}
             onChange={(e) => setCaptureType(e.target.value as UnifiedCaptureType)}
             disabled={disabled}
@@ -119,23 +352,25 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
           </select>
         </div>
 
-        {/* Viewport Presets */}
+        {/* Device Presets */}
         <div>
-          <label htmlFor="viewport-preset" className="block font-semibold mb-1">
-            Viewport Preset
+          <label htmlFor="device-preset" className="block font-semibold mb-1">
+            Device Preset
           </label>
           <select
-            id="viewport-preset"
+            id="device-preset"
+            data-testid="device-preset-select"
             value={preset}
-            onChange={handlePresetChange}
+            onChange={handleDevicePresetChange}
             disabled={disabled}
             className="w-full p-2 border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
           >
-            {VIEWPORT_PRESETS.map((p) => (
-              <option key={p.name} value={p.name}>
+            {devicePresets.map((p) => (
+              <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
+            <option value="custom">Custom Dimensions...</option>
           </select>
         </div>
 
@@ -146,8 +381,11 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
           </label>
           <select
             id="device-scale-factor"
+            data-testid="device-scale-factor-select"
             value={dpr}
-            onChange={(e) => setDpr(Number(e.target.value))}
+            onChange={(e) => {
+              setDpr(Number(e.target.value));
+            }}
             disabled={disabled}
             className="w-full p-2 border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
           >
@@ -166,13 +404,14 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
           </label>
           <input
             id="viewport-width"
+            data-testid="viewport-width-input"
             type="number"
             min={100}
             max={7680}
             value={width}
             onChange={(e) => {
               setWidth(Number(e.target.value));
-              setPreset('Custom');
+              setPreset('custom');
             }}
             disabled={disabled}
             className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
@@ -185,13 +424,14 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
           </label>
           <input
             id="viewport-height"
+            data-testid="viewport-height-input"
             type="number"
             min={100}
             max={4320}
             value={height}
             onChange={(e) => {
               setHeight(Number(e.target.value));
-              setPreset('Custom');
+              setPreset('custom');
             }}
             disabled={disabled}
             className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
@@ -211,6 +451,7 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
               </label>
               <select
                 id="screenshot-mode"
+                data-testid="screenshot-mode-select"
                 value={mode}
                 onChange={(e) => setMode(e.target.value as ScreenshotMode)}
                 disabled={disabled}
@@ -246,6 +487,7 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
               </label>
               <input
                 id="recording-duration"
+                data-testid="recording-duration-input"
                 type="number"
                 step={500}
                 min={1000}
