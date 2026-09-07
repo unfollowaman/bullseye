@@ -6,6 +6,7 @@ import { RecordingEngine, recordingEngine } from './recording-engine';
 import { CaptureLogger } from './logger';
 import { isValidUrl } from '@/utils';
 import { validateActions } from './action-validator';
+import { captureHistoryService, CaptureHistoryService } from '@/history/service';
 import {
   CaptureOptions,
   CaptureResult,
@@ -29,6 +30,7 @@ export class CaptureController {
   private browserMgr: BrowserManager;
   private screenshotEng: ScreenshotEngine;
   private recordingEng: RecordingEngine;
+  private historySvc: CaptureHistoryService;
   private jobs: Map<string, UnifiedCaptureResult> = new Map();
   private cancellationTokens: Map<string, { cancelled: boolean; cancelFn?: () => void }> = new Map();
   private activeCount: number = 0;
@@ -36,11 +38,13 @@ export class CaptureController {
   constructor(
     manager: BrowserManager = browserManager,
     screenshotEng: ScreenshotEngine = screenshotEngine,
-    recEngine: RecordingEngine = recordingEngine
+    recEngine: RecordingEngine = recordingEngine,
+    historySvc: CaptureHistoryService = captureHistoryService
   ) {
     this.browserMgr = manager;
     this.screenshotEng = screenshotEng;
     this.recordingEng = recEngine;
+    this.historySvc = historySvc;
   }
 
   async getStatus(): Promise<CaptureControllerStatus> {
@@ -142,6 +146,25 @@ export class CaptureController {
     return { valid: true };
   }
 
+  /**
+   * Safely persists a capture history record without failing the capture execution
+   * if history database writing fails (Requirement 18).
+   */
+  private persistHistorySafely(job: UnifiedCaptureResult): UnifiedCaptureResult {
+    try {
+      const historyRecord = this.historySvc.recordJobResult(job);
+      if (historyRecord?.id) {
+        job.historyRecordId = historyRecord.id;
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const warn = `Warning: Failed to persist capture history record: ${errMsg}`;
+      job.warnings = [...(job.warnings || []), warn];
+      CaptureLogger.warn('history_persistence_failed', { jobId: job.id, error: errMsg });
+    }
+    return job;
+  }
+
   // Main execution entrypoint for unified captures
   async executeJob(config: UnifiedCaptureConfig): Promise<UnifiedCaptureResult> {
     const jobId = config.id || `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -160,6 +183,8 @@ export class CaptureController {
     // Build initial pending job state
     let job: UnifiedCaptureResult = {
       id: jobId,
+      projectId: config.projectId,
+      recipeId: config.recipeId,
       status: 'pending',
       url: config.url || '',
       viewport,
@@ -188,7 +213,7 @@ export class CaptureController {
       };
       this.jobs.set(jobId, job);
       CaptureLogger.logCaptureFailed(jobId, validation.errors.join('; '));
-      return job;
+      return this.persistHistorySafely(job);
     }
 
     // Transition to running
@@ -212,7 +237,8 @@ export class CaptureController {
     try {
       // Handle cancellation check prior to engine operations
       if (this.isCancelled(jobId)) {
-        return this.finalizeCancelledJob(jobId);
+        const cancelledJob = await this.finalizeCancelledJob(jobId);
+        return this.persistHistorySafely(cancelledJob);
       }
 
       const outputDir = config.outputDir ?? DEFAULT_OUTPUT_DIR;
@@ -225,7 +251,8 @@ export class CaptureController {
       // 1. Screenshot Operation if requested
       if (requestedCaptureTypes.includes('screenshot')) {
         if (this.isCancelled(jobId)) {
-          return this.finalizeCancelledJob(jobId);
+          const cancelledJob = await this.finalizeCancelledJob(jobId);
+          return this.persistHistorySafely(cancelledJob);
         }
 
         CaptureLogger.logScreenshotStarted(jobId);
@@ -273,7 +300,8 @@ export class CaptureController {
       // 2. Recording Operation if requested
       if (requestedCaptureTypes.includes('recording')) {
         if (this.isCancelled(jobId)) {
-          return this.finalizeCancelledJob(jobId);
+          const cancelledJob = await this.finalizeCancelledJob(jobId);
+          return this.persistHistorySafely(cancelledJob);
         }
 
         const durationMs =
@@ -319,7 +347,8 @@ export class CaptureController {
 
       // Check cancellation during or after execution
       if (this.isCancelled(jobId)) {
-        return this.finalizeCancelledJob(jobId);
+        const cancelledJob = await this.finalizeCancelledJob(jobId);
+        return this.persistHistorySafely(cancelledJob);
       }
 
       // Determine final JobStatus
@@ -349,7 +378,8 @@ export class CaptureController {
       }
 
       if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
-        return (this.jobs.get(jobId) as UnifiedCaptureResult) || this.finalizeCancelledJob(jobId);
+        const cJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
+        return this.persistHistorySafely(cJob);
       }
 
       const actionDiagnostics = screenshotResult?.actionDiagnostics ?? recordingResult?.actionDiagnostics;
@@ -366,7 +396,7 @@ export class CaptureController {
 
       this.jobs.set(jobId, job);
       CaptureLogger.logCaptureCompleted(jobId, finalStatus, totalMs);
-      return job;
+      return this.persistHistorySafely(job);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown execution error';
       job.errors.push(errorMessage);
@@ -378,7 +408,7 @@ export class CaptureController {
       };
       this.jobs.set(jobId, job);
       CaptureLogger.logCaptureFailed(jobId, errorMessage);
-      return job;
+      return this.persistHistorySafely(job);
     } finally {
       this.activeCount = Math.max(0, this.activeCount - 1);
       this.cancellationTokens.delete(jobId);
@@ -430,6 +460,8 @@ export class CaptureController {
 
     const cancelledJob: UnifiedCaptureResult = {
       id: jobId,
+      projectId: existing?.projectId,
+      recipeId: existing?.recipeId,
       status: 'cancelled',
       url: existing?.url || '',
       viewport: existing?.viewport || DEFAULT_VIEWPORT,
@@ -448,6 +480,9 @@ export class CaptureController {
 
     this.jobs.set(jobId, cancelledJob);
     CaptureLogger.logCleanup(jobId, 'Cleaned outputs for cancelled job');
+
+    // Persist cancellation in history
+    this.persistHistorySafely(cancelledJob);
     return cancelledJob;
   }
 

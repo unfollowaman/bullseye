@@ -93,9 +93,11 @@ export interface CaptureOptions extends ScreenshotOptions {
   type?: UnifiedCaptureType;
   captureType?: UnifiedCaptureType;
   recordingDurationMs?: number;
+  projectId?: string;
+  recipeId?: string;
 }
 
-// Unified Capture Config options structure for Phase 4
+// Unified Capture Config options structure for Phase 4 & Phase 9
 export interface UnifiedScreenshotOptions {
   mode?: ScreenshotMode;
   fullPage?: boolean;
@@ -118,6 +120,8 @@ export interface TimeoutOptions {
 
 export interface UnifiedCaptureConfig {
   id?: string;
+  projectId?: string;
+  recipeId?: string;
   url: string;
   captureType?: UnifiedCaptureType;
   type?: UnifiedCaptureType; // Alias for captureType
@@ -158,6 +162,9 @@ export interface UnifiedCaptureDurations {
 
 export interface UnifiedCaptureResult {
   id: string;
+  projectId?: string;
+  recipeId?: string;
+  historyRecordId?: string;
   status: JobStatus;
   url: string;
   viewport: ViewportDimensions;
