@@ -1,0 +1,30 @@
+[
+  {
+    "id": "recipe_1788789785541_dj5ddr",
+    "name": "Modified Duplicate",
+    "description": "E2E full lifecycle test recipe",
+    "config": {
+      "url": "http://127.0.0.1:42507/actions",
+      "captureType": "screenshot",
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "actions": [
+        {
+          "type": "scroll",
+          "y": 300
+        }
+      ]
+    },
+    "actions": [
+      {
+        "type": "scroll",
+        "y": 300
+      }
+    ],
+    "createdAt": "2026-09-07T14:03:05.541Z",
+    "updatedAt": "2026-09-07T14:03:05.661Z",
+    "version": 1
+  }
+]

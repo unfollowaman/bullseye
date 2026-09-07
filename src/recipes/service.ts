@@ -20,7 +20,10 @@ export class RecipeService {
     this.controller = controller;
   }
 
-  listRecipes(): Recipe[] {
+  listRecipes(projectId?: string): Recipe[] {
+    if (projectId) {
+      return this.repo.getByProjectId(projectId);
+    }
     return this.repo.getAll();
   }
 
@@ -48,6 +51,7 @@ export class RecipeService {
       id,
       name: input.name.trim(),
       description: input.description?.trim() || '',
+      projectId: input.projectId || undefined,
       config,
       actions,
       createdAt: now,
@@ -81,10 +85,18 @@ export class RecipeService {
       actions,
     };
 
+    let updatedProjectId: string | undefined = existing.projectId;
+    if (input.projectId === null) {
+      updatedProjectId = undefined;
+    } else if (input.projectId !== undefined) {
+      updatedProjectId = input.projectId;
+    }
+
     const updatedRecipe: Recipe = {
       ...existing,
       name: input.name !== undefined ? input.name.trim() : existing.name,
       description: input.description !== undefined ? input.description.trim() : existing.description,
+      projectId: updatedProjectId,
       config: mergedConfig,
       actions,
       updatedAt: new Date().toISOString(),
@@ -98,6 +110,14 @@ export class RecipeService {
     return this.repo.save(updatedRecipe);
   }
 
+  assignToProject(id: string, projectId: string): Recipe {
+    return this.updateRecipe(id, { projectId });
+  }
+
+  removeFromProject(id: string): Recipe {
+    return this.updateRecipe(id, { projectId: null });
+  }
+
   duplicateRecipe(id: string): Recipe {
     const existing = this.repo.getById(id);
     if (!existing) {
@@ -107,7 +127,7 @@ export class RecipeService {
     const newId = `recipe_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const now = new Date().toISOString();
 
-    // Deep copy actions and config to ensure complete independence
+    // Deep copy actions and config
     const clonedActions = JSON.parse(JSON.stringify(existing.actions));
     const clonedConfig: UnifiedCaptureConfig = JSON.parse(JSON.stringify(existing.config));
     clonedConfig.actions = clonedActions;
@@ -116,6 +136,7 @@ export class RecipeService {
       id: newId,
       name: `${existing.name} (Copy)`,
       description: existing.description,
+      projectId: existing.projectId,
       config: clonedConfig,
       actions: clonedActions,
       createdAt: now,
@@ -147,7 +168,9 @@ export class RecipeService {
     const executionConfig: UnifiedCaptureConfig = {
       ...JSON.parse(JSON.stringify(recipe.config)),
       ...(overrideOptions ? JSON.parse(JSON.stringify(overrideOptions)) : {}),
-      // Use actions from recipe (or overridden actions)
+      // Pass recipeId and projectId to capture job for capture history linking
+      recipeId: recipe.id,
+      projectId: overrideOptions?.projectId || recipe.projectId,
       actions: overrideOptions?.actions
         ? JSON.parse(JSON.stringify(overrideOptions.actions))
         : JSON.parse(JSON.stringify(recipe.actions)),

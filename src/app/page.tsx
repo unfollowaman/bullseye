@@ -2,11 +2,16 @@
 
 import React, { useEffect, useState } from 'react';
 import { CaptureControllerStatus } from '@/capture/types';
+import { Navigation } from '@/components/Navigation';
 import { CaptureForm } from '@/components/CaptureForm';
+import { ProjectManager } from '@/components/projects/ProjectManager';
+import { RecipeManager } from '@/components/recipes/RecipeManager';
+import { HistoryManager } from '@/components/history/HistoryManager';
 
 export default function HomePage() {
   const [systemStatus, setSystemStatus] = useState<CaptureControllerStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'capture' | 'projects' | 'recipes' | 'history'>('capture');
 
   useEffect(() => {
     async function checkStatus() {
@@ -27,51 +32,39 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8 font-sans text-gray-900">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
-              Bullseye Dashboard
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Local-first website screenshots and WebM screen recording engine.
-            </p>
-          </div>
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* Navigation Header */}
+        <Navigation
+          systemStatus={systemStatus}
+          statusLoading={statusLoading}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
 
-          {/* System Status Widget */}
-          <div
-            data-testid="system-status-card"
-            className="bg-white border border-gray-200 rounded-lg p-3 text-xs shadow-sm flex items-center gap-3 self-start sm:self-auto"
-          >
-            <div className="font-semibold text-gray-700">System Status:</div>
-            {statusLoading ? (
-              <span className="text-gray-400">Checking...</span>
-            ) : systemStatus ? (
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-block w-2.5 h-2.5 rounded-full ${
-                    systemStatus.ready ? 'bg-green-500' : 'bg-red-500'
-                  }`}
-                />
-                <span className="font-medium text-gray-800">
-                  {systemStatus.ready ? 'Ready' : 'Unavailable'}
-                </span>
-                <span className="text-gray-400">|</span>
-                <span className="text-gray-600">
-                  Active: <strong>{systemStatus.activeCaptures}</strong>
-                </span>
-              </div>
-            ) : (
-              <span className="text-red-500 font-medium">Offline</span>
-            )}
-          </div>
-        </header>
+        {/* Tab Content */}
+        {activeTab === 'capture' && (
+          <section data-testid="main-capture-section">
+            <CaptureForm />
+          </section>
+        )}
 
-        {/* Main Capture Form & Results */}
-        <section data-testid="main-capture-section">
-          <CaptureForm />
-        </section>
+        {activeTab === 'projects' && (
+          <section data-testid="main-projects-section">
+            <ProjectManager />
+          </section>
+        )}
+
+        {activeTab === 'recipes' && (
+          <section data-testid="main-recipes-section">
+            <RecipeManager />
+          </section>
+        )}
+
+        {activeTab === 'history' && (
+          <section data-testid="main-history-section">
+            <HistoryManager />
+          </section>
+        )}
       </div>
     </main>
   );

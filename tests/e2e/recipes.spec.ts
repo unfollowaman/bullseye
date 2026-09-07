@@ -133,6 +133,7 @@ test.describe('Phase 8 — Capture Recipes E2E Tests', () => {
     const uniqueRecipeName = `UI Recipe ${Date.now()}`;
 
     await page.goto('/');
+    await page.waitForSelector('[data-testid="nav-tab-recipes"]', { state: 'visible' });
 
     // Switch to Recipes tab
     await page.click('[data-testid="nav-tab-recipes"]');
@@ -151,12 +152,16 @@ test.describe('Phase 8 — Capture Recipes E2E Tests', () => {
     await page.click('[data-testid="add-action-btn"]');
     await page.fill('[data-testid="action-0-selector"]', '#click-box');
 
-    // Save recipe
-    await page.click('[data-testid="save-recipe-submit-btn"]');
+    // Save recipe and wait for response
+    const [response] = await Promise.all([
+      page.waitForResponse((res) => res.url().includes('/api/recipes') && res.status() === 201),
+      page.click('[data-testid="save-recipe-submit-btn"]'),
+    ]);
+    expect(response.ok()).toBe(true);
 
     // Locate unique recipe card using data-testid title
     const recipeTitle = page.locator('h4').filter({ hasText: uniqueRecipeName });
-    await expect(recipeTitle).toBeVisible();
+    await expect(recipeTitle).toBeVisible({ timeout: 10000 });
 
     const recipeCard = page.locator('[data-testid^="recipe-card-"]').filter({
       has: page.locator('h4').filter({ hasText: uniqueRecipeName }),

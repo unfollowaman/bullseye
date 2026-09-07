@@ -1,36 +1,52 @@
-import fs from 'fs';
-import path from 'path';
+import { DatabaseManager, dbManager } from '@/db';
 import { Recipe } from './types';
 import { CURRENT_RECIPE_VERSION } from './validator';
 
 export class RecipeRepository {
-  private filePath: string;
+  private dbMgr: DatabaseManager;
 
-  constructor(filePath?: string) {
-    this.filePath =
-      filePath || path.join(process.cwd(), 'data', 'recipes.json');
-  }
-
-  private ensureDir(): void {
-    const dir = path.dirname(this.filePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+  constructor(dbMgrOrPath?: DatabaseManager | string) {
+    if (typeof dbMgrOrPath === 'string') {
+      this.dbMgr = new DatabaseManager(dbMgrOrPath);
+    } else {
+      this.dbMgr = dbMgrOrPath || dbManager;
     }
   }
 
-  /**
-   * Migrate legacy or older versioned recipe objects to current schema version.
-   */
-  private migrateRecipe(raw: Record<string, unknown>): Recipe {
+  private mapRowToRecipe(row: Record<string, unknown>): Recipe {
+    let configObj = {};
+    let actionsArr = [];
+
+    try {
+      if (typeof row.config === 'string' && row.config.trim()) {
+        configObj = JSON.parse(row.config);
+      } else if (row.config && typeof row.config === 'object') {
+        configObj = row.config;
+      }
+    } catch {
+      configObj = {};
+    }
+
+    try {
+      if (typeof row.actions === 'string' && row.actions.trim()) {
+        actionsArr = JSON.parse(row.actions);
+      } else if (Array.isArray(row.actions)) {
+        actionsArr = row.actions;
+      }
+    } catch {
+      actionsArr = [];
+    }
+
     return {
-      id: String(raw.id),
-      name: typeof raw.name === 'string' ? raw.name : 'Untitled Recipe',
-      description: typeof raw.description === 'string' ? raw.description : '',
-      config: (raw.config as Recipe['config']) || { url: '' },
-      actions: Array.isArray(raw.actions) ? (raw.actions as Recipe['actions']) : [],
-      createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
-      updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
-      version: CURRENT_RECIPE_VERSION,
+      id: String(row.id),
+      name: String(row.name || 'Untitled Recipe'),
+      description: row.description ? String(row.description) : '',
+      projectId: row.project_id ? String(row.project_id) : undefined,
+      config: configObj as Recipe['config'],
+      actions: actionsArr as Recipe['actions'],
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+      version: Number(row.version) || CURRENT_RECIPE_VERSION,
     };
   }
 
@@ -38,70 +54,89 @@ export class RecipeRepository {
    * Read all recipes from storage.
    */
   getAll(): Recipe[] {
-    try {
-      if (!fs.existsSync(this.filePath)) {
-        return [];
-      }
-      const data = fs.readFileSync(this.filePath, 'utf-8');
-      if (!data.trim()) {
-        return [];
-      }
-      const rawList = JSON.parse(data);
-      if (!Array.isArray(rawList)) {
-        return [];
-      }
-      return rawList.map((raw) => this.migrateRecipe(raw as Record<string, unknown>));
-    } catch (err) {
-      console.error('Failed to read recipes repository:', err);
-      return [];
-    }
-  }
-
-  /**
-   * Save all recipes to storage atomically.
-   */
-  saveAll(recipes: Recipe[]): void {
-    this.ensureDir();
-    const tempFile = `${this.filePath}.tmp`;
-    const serialized = JSON.stringify(recipes, null, 2);
-    fs.writeFileSync(tempFile, serialized, 'utf-8');
-    fs.renameSync(tempFile, this.filePath);
+    const db = this.dbMgr.getDb();
+    const rows = db.prepare('SELECT * FROM recipes ORDER BY created_at DESC').all() as Record<string, unknown>[];
+    return rows.map((r) => this.mapRowToRecipe(r));
   }
 
   /**
    * Find recipe by ID.
    */
   getById(id: string): Recipe | null {
-    const recipes = this.getAll();
-    return recipes.find((r) => r.id === id) || null;
+    const db = this.dbMgr.getDb();
+    const row = db.prepare('SELECT * FROM recipes WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return this.mapRowToRecipe(row);
+  }
+
+  /**
+   * Find recipes belonging to a specific Project ID.
+   */
+  getByProjectId(projectId: string): Recipe[] {
+    const db = this.dbMgr.getDb();
+    const rows = db
+      .prepare('SELECT * FROM recipes WHERE project_id = ? ORDER BY created_at DESC')
+      .all(projectId) as Record<string, unknown>[];
+    return rows.map((r) => this.mapRowToRecipe(r));
   }
 
   /**
    * Save (insert or update) a recipe.
    */
   save(recipe: Recipe): Recipe {
-    const recipes = this.getAll();
-    const index = recipes.findIndex((r) => r.id === recipe.id);
-    if (index >= 0) {
-      recipes[index] = recipe;
+    const db = this.dbMgr.getDb();
+    const existing = db.prepare('SELECT id FROM recipes WHERE id = ?').get(recipe.id);
+
+    const configStr = JSON.stringify(recipe.config || {});
+    const actionsStr = JSON.stringify(recipe.actions || []);
+    const projId = recipe.projectId || null;
+
+    if (existing) {
+      db.prepare(`
+        UPDATE recipes
+        SET name = ?, description = ?, project_id = ?, config = ?, actions = ?, updated_at = ?, version = ?
+        WHERE id = ?
+      `).run(
+        recipe.name,
+        recipe.description || '',
+        projId,
+        configStr,
+        actionsStr,
+        recipe.updatedAt,
+        recipe.version || CURRENT_RECIPE_VERSION,
+        recipe.id
+      );
     } else {
-      recipes.push(recipe);
+      db.prepare(`
+        INSERT INTO recipes (id, name, description, project_id, config, actions, created_at, updated_at, version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        recipe.id,
+        recipe.name,
+        recipe.description || '',
+        projId,
+        configStr,
+        actionsStr,
+        recipe.createdAt,
+        recipe.updatedAt,
+        recipe.version || CURRENT_RECIPE_VERSION
+      );
     }
-    this.saveAll(recipes);
+
     return recipe;
   }
 
   /**
-   * Delete a recipe by ID.
+   * Safe recipe deletion:
+   * Detaches associated capture_history records by setting recipe_id to NULL.
    */
   delete(id: string): boolean {
-    const recipes = this.getAll();
-    const initialLength = recipes.length;
-    const filtered = recipes.filter((r) => r.id !== id);
-    if (filtered.length === initialLength) {
-      return false;
-    }
-    this.saveAll(filtered);
+    const db = this.dbMgr.getDb();
+    const existing = this.getById(id);
+    if (!existing) return false;
+
+    db.prepare('UPDATE capture_history SET recipe_id = NULL WHERE recipe_id = ?').run(id);
+    db.prepare('DELETE FROM recipes WHERE id = ?').run(id);
     return true;
   }
 }
