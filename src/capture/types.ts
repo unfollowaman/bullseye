@@ -122,6 +122,8 @@ export interface UnifiedCaptureConfig {
   id?: string;
   projectId?: string;
   recipeId?: string;
+  capturePresetId?: string;
+  devicePresetId?: string;
   url: string;
   captureType?: UnifiedCaptureType;
   type?: UnifiedCaptureType; // Alias for captureType

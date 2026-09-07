@@ -6,14 +6,16 @@ import { isValidUrl } from '@/utils/url-utils';
 import { CaptureOptions } from './CaptureOptions';
 import { CaptureStatus, ExtendedJobStatus } from './CaptureStatus';
 import { ResultContainer } from './ResultContainer';
+import { PresetManager } from './presets/PresetManager';
 
 export const CaptureForm: React.FC = () => {
   // Capture configuration state
   const [url, setUrl] = useState('https://example.com');
   const [captureType, setCaptureType] = useState<UnifiedCaptureType>('screenshot');
-  const [width, setWidth] = useState(1280);
-  const [height, setHeight] = useState(720);
-  const [preset, setPreset] = useState('Desktop HD (1280x720)');
+  const [width, setWidth] = useState(1920);
+  const [height, setHeight] = useState(1080);
+  const [preset, setPreset] = useState('device_desktop_hd');
+  const [showPresetManager, setShowPresetManager] = useState(false);
   const [dpr, setDpr] = useState(1);
   const [mode, setMode] = useState<ScreenshotMode>('viewport');
   const [disableAnimations, setDisableAnimations] = useState(false);
@@ -205,8 +207,21 @@ export const CaptureForm: React.FC = () => {
       >
         <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">Configure Capture</h2>
-          <span className="text-xs text-gray-500">Phase 5 UI</span>
+          <button
+            type="button"
+            data-testid="toggle-preset-manager-btn"
+            onClick={() => setShowPresetManager(!showPresetManager)}
+            className="text-xs text-blue-600 hover:text-blue-800 font-semibold underline"
+          >
+            {showPresetManager ? 'Close Preset Manager' : 'Manage Custom Presets'}
+          </button>
         </div>
+
+        {showPresetManager && (
+          <PresetManager
+            onClose={() => setShowPresetManager(false)}
+          />
+        )}
 
         <CaptureOptions
           url={url}

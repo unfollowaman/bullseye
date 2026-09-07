@@ -98,6 +98,18 @@ export class DatabaseManager {
         FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
         FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE SET NULL
       );
+
+      CREATE TABLE IF NOT EXISTS capture_presets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        is_built_in INTEGER NOT NULL DEFAULT 0,
+        device_preset_id TEXT,
+        config TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1
+      );
     `);
 
     // Record initial migration
@@ -109,6 +121,16 @@ export class DatabaseManager {
       this.db.prepare(
         'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)'
       ).run(1, new Date().toISOString());
+    }
+
+    const migration2Check = this.db.prepare(
+      'SELECT version FROM schema_migrations WHERE version = 2'
+    ).all();
+
+    if (migration2Check.length === 0) {
+      this.db.prepare(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)'
+      ).run(2, new Date().toISOString());
     }
   }
 
