@@ -7,11 +7,12 @@ import { CaptureForm } from '@/components/CaptureForm';
 import { ProjectManager } from '@/components/projects/ProjectManager';
 import { RecipeManager } from '@/components/recipes/RecipeManager';
 import { HistoryManager } from '@/components/history/HistoryManager';
+import { MockupGenerator } from '@/components/mockups/MockupGenerator';
 
 export default function HomePage() {
   const [systemStatus, setSystemStatus] = useState<CaptureControllerStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'capture' | 'projects' | 'recipes' | 'history'>('capture');
+  const [activeTab, setActiveTab] = useState<'capture' | 'projects' | 'recipes' | 'history' | 'mockups'>('capture');
 
   useEffect(() => {
     async function checkStatus() {
@@ -63,6 +64,12 @@ export default function HomePage() {
         {activeTab === 'history' && (
           <section data-testid="main-history-section">
             <HistoryManager />
+          </section>
+        )}
+
+        {activeTab === 'mockups' && (
+          <section data-testid="main-mockups-section">
+            <MockupGenerator />
           </section>
         )}
       </div>

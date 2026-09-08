@@ -7,8 +7,8 @@ import { CaptureControllerStatus } from '@/capture/types';
 interface NavigationProps {
   systemStatus?: CaptureControllerStatus | null;
   statusLoading?: boolean;
-  activeTab?: 'capture' | 'projects' | 'recipes' | 'history';
-  onTabChange?: (tab: 'capture' | 'projects' | 'recipes' | 'history') => void;
+  activeTab?: 'capture' | 'projects' | 'recipes' | 'history' | 'mockups';
+  onTabChange?: (tab: 'capture' | 'projects' | 'recipes' | 'history' | 'mockups') => void;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -28,9 +28,11 @@ export const Navigation: React.FC<NavigationProps> = ({
       ? 'recipes'
       : pathname === '/history' || pathname?.startsWith('/history/')
       ? 'history'
+      : pathname === '/mockups'
+      ? 'mockups'
       : 'capture');
 
-  const handleTabClick = (tab: 'capture' | 'projects' | 'recipes' | 'history') => {
+  const handleTabClick = (tab: 'capture' | 'projects' | 'recipes' | 'history' | 'mockups') => {
     if (onTabChange) {
       onTabChange(tab);
     } else {
@@ -136,6 +138,18 @@ export const Navigation: React.FC<NavigationProps> = ({
           }`}
         >
           History
+        </button>
+        <button
+          type="button"
+          data-testid="nav-tab-mockups"
+          onClick={() => handleTabClick('mockups')}
+          className={`px-4 py-2 rounded-md transition-colors ${
+            currentTab === 'mockups'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'hover:text-gray-900 hover:bg-gray-200/50'
+          }`}
+        >
+          Mockups
         </button>
       </nav>
     </header>

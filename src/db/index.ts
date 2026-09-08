@@ -110,6 +110,23 @@ export class DatabaseManager {
         updated_at TEXT NOT NULL,
         version INTEGER NOT NULL DEFAULT 1
       );
+
+      CREATE TABLE IF NOT EXISTS mockups (
+        id TEXT PRIMARY KEY,
+        source_capture_id TEXT,
+        source_asset_path TEXT NOT NULL,
+        mockup_type TEXT NOT NULL,
+        config TEXT NOT NULL,
+        output_path TEXT NOT NULL,
+        web_path TEXT NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        format TEXT NOT NULL,
+        warnings TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (source_capture_id) REFERENCES capture_history(id) ON DELETE SET NULL
+      );
     `);
 
     // Record initial migration
@@ -131,6 +148,16 @@ export class DatabaseManager {
       this.db.prepare(
         'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)'
       ).run(2, new Date().toISOString());
+    }
+
+    const migration3Check = this.db.prepare(
+      'SELECT version FROM schema_migrations WHERE version = 3'
+    ).all();
+
+    if (migration3Check.length === 0) {
+      this.db.prepare(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)'
+      ).run(3, new Date().toISOString());
     }
   }
 
