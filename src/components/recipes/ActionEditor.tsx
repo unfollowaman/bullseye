@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CaptureAction, ActionType } from '@/capture/types';
+import { CaptureAction, ActionType, MovementEasing } from '@/capture/types';
 
 interface ActionEditorProps {
   actions: CaptureAction[];
@@ -21,28 +21,35 @@ export const ActionEditor: React.FC<ActionEditorProps> = ({
 
     switch (selectedType) {
       case 'wait':
+      case 'pause':
         newAction = { type: 'wait', durationMs: 1000 };
         break;
       case 'scroll':
-        newAction = { type: 'scroll', y: 500 };
+        newAction = { type: 'scroll', y: 500, durationMs: 800, easing: 'ease-in-out' };
         break;
       case 'smooth_scroll':
-        newAction = { type: 'smooth_scroll', y: 500, durationMs: 1000 };
+      case 'smoothScroll':
+        newAction = { type: 'smooth_scroll', y: 500, durationMs: 1000, easing: 'ease-in-out' };
         break;
       case 'mouse_move':
-        newAction = { type: 'mouse_move', x: 100, y: 100 };
+      case 'mouseMove':
+        newAction = { type: 'mouse_move', x: 100, y: 100, durationMs: 500, easing: 'ease-in-out' };
         break;
       case 'click':
-        newAction = { type: 'click', selector: 'button' };
+        newAction = { type: 'click', selector: 'button', durationMs: 300 };
         break;
       case 'hover':
-        newAction = { type: 'hover', selector: 'a' };
+        newAction = { type: 'hover', selector: 'a', durationMs: 500 };
         break;
       case 'type_text':
         newAction = { type: 'type_text', selector: 'input', text: 'Hello' };
         break;
       case 'key_press':
         newAction = { type: 'key_press', key: 'Enter' };
+        break;
+      case 'set_cursor_visibility':
+      case 'setCursorVisibility':
+        newAction = { type: 'set_cursor_visibility', visible: true };
         break;
       default:
         newAction = { type: 'wait', durationMs: 1000 };
@@ -99,14 +106,15 @@ export const ActionEditor: React.FC<ActionEditorProps> = ({
             disabled={disabled}
             className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value="wait">Wait</option>
-            <option value="scroll">Scroll</option>
-            <option value="smooth_scroll">Smooth Scroll</option>
-            <option value="mouse_move">Mouse Move</option>
-            <option value="click">Click</option>
+            <option value="wait">Wait / Pause</option>
+            <option value="mouse_move">Mouse Move (Smooth)</option>
+            <option value="click">Click (With Indicator)</option>
             <option value="hover">Hover</option>
+            <option value="smooth_scroll">Smooth Scroll</option>
+            <option value="scroll">Instant Scroll</option>
             <option value="type_text">Type Text</option>
             <option value="key_press">Key Press</option>
+            <option value="set_cursor_visibility">Set Cursor Visibility</option>
           </select>
           <button
             type="button"
@@ -171,13 +179,13 @@ export const ActionEditor: React.FC<ActionEditorProps> = ({
 
               {/* Parameter Editor based on Action Type */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                {action.type === 'wait' && (
+                {(action.type === 'wait' || action.type === 'pause') && (
                   <div>
-                    <label className="block text-[11px] text-gray-500 mb-0.5">Duration (ms)</label>
+                    <label className="block text-[11px] text-gray-500 mb-0.5">Pause Duration (ms)</label>
                     <input
                       type="number"
                       data-testid={`action-${index}-durationMs`}
-                      value={action.durationMs ?? 1000}
+                      value={action.durationMs ?? (action as { pauseMs?: number }).pauseMs ?? 1000}
                       onChange={(e) =>
                         updateActionParam(index, 'durationMs', parseInt(e.target.value, 10) || 0)
                       }
@@ -187,7 +195,7 @@ export const ActionEditor: React.FC<ActionEditorProps> = ({
                   </div>
                 )}
 
-                {(action.type === 'scroll' || action.type === 'smooth_scroll') && (
+                {(action.type === 'scroll' || action.type === 'smooth_scroll' || action.type === 'smoothScroll') && (
                   <>
                     <div>
                       <label className="block text-[11px] text-gray-500 mb-0.5">Scroll Y (px)</label>
@@ -215,25 +223,38 @@ export const ActionEditor: React.FC<ActionEditorProps> = ({
                         className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
-                    {action.type === 'smooth_scroll' && (
-                      <div>
-                        <label className="block text-[11px] text-gray-500 mb-0.5">Duration (ms)</label>
-                        <input
-                          type="number"
-                          data-testid={`action-${index}-durationMs`}
-                          value={action.durationMs ?? 1000}
-                          onChange={(e) =>
-                            updateActionParam(index, 'durationMs', parseInt(e.target.value, 10) || 0)
-                          }
-                          disabled={disabled}
-                          className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                    )}
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-0.5">Duration (ms)</label>
+                      <input
+                        type="number"
+                        data-testid={`action-${index}-durationMs`}
+                        value={action.durationMs ?? 1000}
+                        onChange={(e) =>
+                          updateActionParam(index, 'durationMs', parseInt(e.target.value, 10) || 0)
+                        }
+                        disabled={disabled}
+                        className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-0.5">Easing Curve</label>
+                      <select
+                        data-testid={`action-${index}-easing`}
+                        value={action.easing ?? 'ease-in-out'}
+                        onChange={(e) => updateActionParam(index, 'easing', e.target.value as MovementEasing)}
+                        disabled={disabled}
+                        className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="ease-in-out">Ease In Out</option>
+                        <option value="linear">Linear</option>
+                        <option value="ease-in">Ease In</option>
+                        <option value="ease-out">Ease Out</option>
+                      </select>
+                    </div>
                   </>
                 )}
 
-                {action.type === 'mouse_move' && (
+                {(action.type === 'mouse_move' || action.type === 'mouseMove') && (
                   <>
                     <div>
                       <label className="block text-[11px] text-gray-500 mb-0.5">X Position (px)</label>
@@ -261,12 +282,40 @@ export const ActionEditor: React.FC<ActionEditorProps> = ({
                         className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-0.5">Movement Duration (ms)</label>
+                      <input
+                        type="number"
+                        data-testid={`action-${index}-durationMs`}
+                        value={action.durationMs ?? 500}
+                        onChange={(e) =>
+                          updateActionParam(index, 'durationMs', parseInt(e.target.value, 10) || 0)
+                        }
+                        disabled={disabled}
+                        className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-0.5">Easing</label>
+                      <select
+                        data-testid={`action-${index}-easing`}
+                        value={action.easing ?? 'ease-in-out'}
+                        onChange={(e) => updateActionParam(index, 'easing', e.target.value as MovementEasing)}
+                        disabled={disabled}
+                        className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="ease-in-out">Ease In Out</option>
+                        <option value="linear">Linear</option>
+                        <option value="ease-in">Ease In</option>
+                        <option value="ease-out">Ease Out</option>
+                      </select>
+                    </div>
                   </>
                 )}
 
                 {(action.type === 'click' || action.type === 'hover' || action.type === 'type_text') && (
                   <div className="sm:col-span-2">
-                    <label className="block text-[11px] text-gray-500 mb-0.5">CSS Selector</label>
+                    <label className="block text-[11px] text-gray-500 mb-0.5">CSS Selector (or Coords)</label>
                     <input
                       type="text"
                       data-testid={`action-${index}-selector`}
@@ -303,6 +352,44 @@ export const ActionEditor: React.FC<ActionEditorProps> = ({
                       value={action.key ?? ''}
                       onChange={(e) => updateActionParam(index, 'key', e.target.value)}
                       placeholder="Enter, Tab, Escape, ArrowDown..."
+                      disabled={disabled}
+                      className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+
+                {(action.type === 'set_cursor_visibility' || action.type === 'setCursorVisibility') && (
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-0.5">Cursor Visible</label>
+                    <select
+                      data-testid={`action-${index}-visible`}
+                      value={action.visible ? 'true' : 'false'}
+                      onChange={(e) => updateActionParam(index, 'visible', e.target.value === 'true')}
+                      disabled={disabled}
+                      className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="true">Visible (Show)</option>
+                      <option value="false">Hidden (Hide)</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Optional Post-Action Pause */}
+                {action.type !== 'wait' && action.type !== 'pause' && (
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-0.5">Post-Action Pause (ms)</label>
+                    <input
+                      type="number"
+                      data-testid={`action-${index}-postPauseMs`}
+                      value={action.postPauseMs ?? action.pauseMs ?? ''}
+                      onChange={(e) =>
+                        updateActionParam(
+                          index,
+                          'postPauseMs',
+                          e.target.value !== '' ? parseInt(e.target.value, 10) : undefined
+                        )
+                      }
+                      placeholder="e.g. 500"
                       disabled={disabled}
                       className="w-full border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500"
                     />

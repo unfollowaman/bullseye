@@ -7,6 +7,7 @@ import { isValidUrl, validateWebM } from '@/utils';
 import { PageStabilizer } from './stabilizer';
 import { getSecureOutputPath } from './path-utils';
 import { ActionExecutor, actionExecutor } from './action-executor';
+import { injectRecordingOverlay, cleanupRecordingOverlay } from './recording-overlay';
 import {
   RecordingOptions,
   RecordingResult,
@@ -56,6 +57,7 @@ export class RecordingEngine {
     const recordingDurationMs = options.recordingDurationMs ?? options.durationMs ?? DEFAULT_RECORDING_DURATION;
     const additionalWaitMs = options.additionalWaitMs ?? 0;
     const timeout = options.timeout ?? DEFAULT_TIMEOUT;
+    const advancedOptions = options.advancedRecordingOptions || {};
 
     let outputPath: string;
     try {
@@ -131,13 +133,17 @@ export class RecordingEngine {
         throw new Error('Recording cancelled by user');
       }
 
+      // 4. Inject Bullseye Recording Overlay (Cursor, Click Indicators, Hover)
+      await injectRecordingOverlay(page, advancedOptions);
+
       const recStart = Date.now();
 
-      // 4. Execute actions while video is actively recording
+      // 5. Execute actions while video is actively recording
       if (options.actions && options.actions.length > 0) {
         const actionResult = await this.actionEng.execute(page, options.actions, {
           cancellationToken: options.cancellationToken,
           defaultTimeoutMs: timeout,
+          advancedRecordingOptions: advancedOptions,
         });
 
         actionDiagnostics = actionResult.diagnostics;
@@ -151,7 +157,7 @@ export class RecordingEngine {
         }
       }
 
-      // 5. Record for remaining configured duration (if actions finished earlier)
+      // 6. Record for remaining configured duration (if actions finished earlier)
       const elapsedActionTime = Date.now() - recStart;
       const targetDuration = Math.max(recordingDurationMs, elapsedActionTime);
 
@@ -165,7 +171,10 @@ export class RecordingEngine {
       }
       const actualRecordingDurationMs = Date.now() - recStart;
 
-      // 6. Finalize video by closing page/context and saving video stream
+      // Clean up overlay before closing video context
+      await cleanupRecordingOverlay(page);
+
+      // 7. Finalize video by closing page/context and saving video stream
       const video = page.video();
       if (!video) {
         throw new Error('Video recording failed: Playwright video instance was not created');
@@ -180,7 +189,7 @@ export class RecordingEngine {
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
       await video.saveAs(outputPath);
 
-      // 7. Validate output WebM file
+      // 8. Validate output WebM file
       const validation = validateWebM(outputPath);
       if (!validation.valid) {
         throw new Error(`Recorded video finalization failed: ${validation.error}`);
@@ -202,6 +211,7 @@ export class RecordingEngine {
         capturedAt: new Date(endTime).toISOString(),
         fileSizeBytes: validation.sizeBytes,
         actionDiagnostics,
+        advancedRecordingOptions: advancedOptions,
       };
 
       return {
@@ -223,8 +233,9 @@ export class RecordingEngine {
         actionDiagnostics,
       };
     } finally {
-      // 8. Cleanup resources & temporary recording artifacts
+      // 9. Cleanup resources, overlay, & temporary recording artifacts
       if (page) {
+        await cleanupRecordingOverlay(page);
         await page.close().catch(() => {});
       }
       if (context) {

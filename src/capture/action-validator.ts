@@ -1,4 +1,4 @@
-import { ActionType } from './action-types';
+import { ActionType, MovementEasing } from './action-types';
 
 export interface ActionValidationResult {
   valid: boolean;
@@ -7,6 +7,7 @@ export interface ActionValidationResult {
 
 const SUPPORTED_ACTION_TYPES: ActionType[] = [
   'wait',
+  'pause',
   'scroll',
   'smooth_scroll',
   'smoothScroll',
@@ -20,7 +21,11 @@ const SUPPORTED_ACTION_TYPES: ActionType[] = [
   'key_press',
   'keyPress',
   'keyboard_press',
+  'set_cursor_visibility',
+  'setCursorVisibility',
 ];
+
+const VALID_EASINGS: MovementEasing[] = ['linear', 'ease-in-out', 'ease-in', 'ease-out'];
 
 export const MAX_WAIT_DURATION_MS = 60000;
 
@@ -48,7 +53,7 @@ export function validateAction(action: unknown, index: number = 0): ActionValida
   if (!SUPPORTED_ACTION_TYPES.includes(type)) {
     return {
       valid: false,
-      errors: [`${prefix} has unsupported type '${act.type}'. Supported actions: wait, scroll, smooth_scroll, mouse_move, click, hover, type_text, key_press`],
+      errors: [`${prefix} has unsupported type '${act.type}'. Supported actions: wait, pause, scroll, smooth_scroll, mouse_move, click, hover, type_text, key_press, set_cursor_visibility`],
     };
   }
 
@@ -59,14 +64,35 @@ export function validateAction(action: unknown, index: number = 0): ActionValida
     }
   }
 
+  // Validate optional postPauseMs and pauseMs
+  if (act.postPauseMs !== undefined) {
+    if (typeof act.postPauseMs !== 'number' || act.postPauseMs < 0 || isNaN(act.postPauseMs)) {
+      errors.push(`${prefix} (${type}) 'postPauseMs' must be a non-negative number`);
+    }
+  }
+  if (act.pauseMs !== undefined) {
+    if (typeof act.pauseMs !== 'number' || act.pauseMs < 0 || isNaN(act.pauseMs)) {
+      errors.push(`${prefix} (${type}) 'pauseMs' must be a non-negative number`);
+    }
+  }
+
+  // Validate optional easing
+  if (act.easing !== undefined) {
+    if (typeof act.easing !== 'string' || !VALID_EASINGS.includes(act.easing as MovementEasing)) {
+      errors.push(`${prefix} (${type}) 'easing' must be one of: ${VALID_EASINGS.join(', ')}`);
+    }
+  }
+
   switch (type) {
-    case 'wait': {
-      if (typeof act.durationMs !== 'number' || isNaN(act.durationMs)) {
-        errors.push(`${prefix} (wait) requires numeric 'durationMs'`);
-      } else if (act.durationMs < 0) {
-        errors.push(`${prefix} (wait) 'durationMs' cannot be negative`);
-      } else if (act.durationMs > MAX_WAIT_DURATION_MS) {
-        errors.push(`${prefix} (wait) 'durationMs' exceeds maximum limit of ${MAX_WAIT_DURATION_MS}ms`);
+    case 'wait':
+    case 'pause': {
+      const duration = typeof act.durationMs === 'number' ? act.durationMs : typeof act.pauseMs === 'number' ? act.pauseMs : undefined;
+      if (duration === undefined || isNaN(duration)) {
+        errors.push(`${prefix} (${type}) requires numeric 'durationMs' or 'pauseMs'`);
+      } else if (duration < 0) {
+        errors.push(`${prefix} (${type}) duration cannot be negative`);
+      } else if (duration > MAX_WAIT_DURATION_MS) {
+        errors.push(`${prefix} (${type}) duration exceeds maximum limit of ${MAX_WAIT_DURATION_MS}ms`);
       }
       break;
     }
@@ -198,6 +224,14 @@ export function validateAction(action: unknown, index: number = 0): ActionValida
         if (typeof act.delayMs !== 'number' || act.delayMs < 0 || isNaN(act.delayMs)) {
           errors.push(`${prefix} (${type}) 'delayMs' must be a non-negative number`);
         }
+      }
+      break;
+    }
+
+    case 'set_cursor_visibility':
+    case 'setCursorVisibility': {
+      if (typeof act.visible !== 'boolean') {
+        errors.push(`${prefix} (${type}) requires boolean 'visible'`);
       }
       break;
     }
