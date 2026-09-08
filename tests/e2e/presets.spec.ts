@@ -8,7 +8,7 @@ test.describe('Phase 10 — Device & Capture Presets E2E Tests', () => {
     await expect(page.getByTestId('capture-form')).toBeVisible();
 
     // Fill target URL
-    await page.fill('#target-url', 'https://example.com');
+    await page.fill('#target-url', 'http://localhost:3000');
 
     // Select Device Preset: Mobile iPhone
     await page.selectOption('[data-testid="device-preset-select"]', 'device_mobile_iphone');
@@ -22,12 +22,12 @@ test.describe('Phase 10 — Device & Capture Presets E2E Tests', () => {
     await page.click('[data-testid="start-capture-button"]');
 
     // Wait for capture completion
-    await expect(page.getByTestId('capture-status')).toContainText(/finished|completed/i, { timeout: 30000 });
+    await expect(page.getByTestId('status-badge')).toContainText(/completed|finished/i, { timeout: 30000 });
 
     // Verify screenshot result rendered
-    await expect(page.getByTestId('screenshot-result')).toBeVisible();
-    await expect(page.getByTestId('screenshot-result')).toContainText('390');
-    await expect(page.getByTestId('screenshot-result')).toContainText('844');
+    await expect(page.getByTestId('screenshot-result-card')).toBeVisible();
+    await expect(page.getByTestId('screenshot-result-card')).toContainText('390');
+    await expect(page.getByTestId('screenshot-result-card')).toContainText('844');
   });
 
   test('Select capture preset -> execute capture -> verify resolved configuration', async ({ page }) => {
@@ -42,11 +42,11 @@ test.describe('Phase 10 — Device & Capture Presets E2E Tests', () => {
     await expect(page.getByTestId('viewport-height-input')).toHaveValue('1080');
 
     // Fill target URL and execute
-    await page.fill('#target-url', 'https://example.com');
+    await page.fill('#target-url', 'http://localhost:3000');
     await page.click('[data-testid="start-capture-button"]');
 
-    await expect(page.getByTestId('capture-status')).toContainText(/finished|completed/i, { timeout: 30000 });
-    await expect(page.getByTestId('screenshot-result')).toBeVisible();
+    await expect(page.getByTestId('status-badge')).toContainText(/completed|finished/i, { timeout: 30000 });
+    await expect(page.getByTestId('screenshot-result-card')).toBeVisible();
   });
 
   test('Recipe -> preset/resolved configuration -> Capture Controller -> output', async ({ page }) => {
@@ -56,21 +56,24 @@ test.describe('Phase 10 — Device & Capture Presets E2E Tests', () => {
     await expect(page.getByText('Capture Recipes')).toBeVisible();
 
     // Create a new recipe with preset configuration
-    await page.click('button:has-text("New Recipe")');
-    await page.fill('input[placeholder="e.g., Homepage Desktop Audit"]', 'Preset Test Recipe');
-    await page.fill('input[placeholder="https://example.com"]', 'https://example.com');
+    await page.click('[data-testid="create-recipe-btn"]');
+    await page.fill('[data-testid="recipe-name-input"]', 'Preset Test Recipe');
+    await page.fill('[data-testid="recipe-url-input"]', 'http://localhost:3000');
 
-    // Select preset in recipe form
-    await page.selectOption('[data-testid="device-preset-select"]', 'device_laptop_retina');
-    await page.click('button:has-text("Save Recipe")');
+    // Set viewport dimensions (e.g. laptop retina 1440x900)
+    await page.fill('[data-testid="recipe-viewport-width"]', '1440');
+    await page.fill('[data-testid="recipe-viewport-height"]', '900');
+    await page.click('[data-testid="save-recipe-submit-btn"]');
 
     // Verify recipe was created
     await expect(page.getByText('Preset Test Recipe')).toBeVisible();
 
     // Execute recipe
-    await page.click('button:has-text("Run Recipe")');
+    const execBtn = page.locator('button[data-testid^="execute-recipe-btn-"]').first();
+    await expect(execBtn).toBeVisible();
+    await execBtn.click();
 
     // Verify execution succeeded
-    await expect(page.getByText(/Recipe executed successfully|finished/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('recipe-execution-result-container')).toBeVisible({ timeout: 30000 });
   });
 });

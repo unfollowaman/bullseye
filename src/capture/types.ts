@@ -9,10 +9,19 @@ export type CaptureStatus = 'idle' | 'initializing' | 'capturing' | 'completed' 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled';
 
 export type ScreenshotMode = 'viewport' | 'fullPage';
+export type Mp4QualityPreset = 'high' | 'medium' | 'low';
 
 export interface ViewportDimensions {
   width: number;
   height: number;
+}
+
+export interface Mp4ConfigOptions {
+  enabled?: boolean;
+  quality?: Mp4QualityPreset;
+  crf?: number;
+  fps?: number;
+  timeoutMs?: number;
 }
 
 export interface ScreenshotOptions {
@@ -63,6 +72,16 @@ export interface RecordingOptions {
   filename?: string;
   cancellationToken?: { cancelled: boolean };
   actions?: CaptureAction[];
+  convertToMp4?: boolean;
+  mp4Options?: Mp4ConfigOptions;
+}
+
+export interface Mp4Result {
+  status: CaptureStatus;
+  outputPath?: string;
+  fileSizeBytes?: number;
+  durationMs?: number;
+  error?: string;
 }
 
 export interface RecordingMetadata {
@@ -75,6 +94,7 @@ export interface RecordingMetadata {
   durationMs: number;
   format: 'webm';
   outputPath: string;
+  mp4OutputPath?: string;
   capturedAt: string;
   fileSizeBytes: number;
   actionDiagnostics?: ActionDiagnostic[];
@@ -84,6 +104,7 @@ export interface RecordingResult {
   id: string;
   status: CaptureStatus;
   metadata?: RecordingMetadata;
+  mp4Result?: Mp4Result;
   error?: string;
   actionDiagnostics?: ActionDiagnostic[];
 }
@@ -95,6 +116,8 @@ export interface CaptureOptions extends ScreenshotOptions {
   recordingDurationMs?: number;
   projectId?: string;
   recipeId?: string;
+  convertToMp4?: boolean;
+  mp4Options?: Mp4ConfigOptions;
 }
 
 // Unified Capture Config options structure for Phase 4 & Phase 9
@@ -107,6 +130,8 @@ export interface UnifiedScreenshotOptions {
 export interface UnifiedRecordingOptions {
   durationMs?: number;
   filename?: string;
+  convertToMp4?: boolean;
+  mp4Options?: Mp4ConfigOptions;
 }
 
 export interface StabilizationOptions {
@@ -135,6 +160,8 @@ export interface UnifiedCaptureConfig {
   timeoutOptions?: TimeoutOptions;
   outputDir?: string;
   actions?: CaptureAction[];
+  convertToMp4?: boolean;
+  mp4Options?: Mp4ConfigOptions;
   // Flattened / legacy fallbacks for maximum usability:
   mode?: ScreenshotMode;
   fullPage?: boolean;
@@ -147,7 +174,8 @@ export interface UnifiedCaptureConfig {
 
 export interface UnifiedCaptureOutputPaths {
   screenshot?: string;
-  recording?: string;
+  recording?: string; // WebM path
+  mp4?: string;       // MP4 path
 }
 
 export interface UnifiedCaptureTimestamps {
@@ -160,6 +188,7 @@ export interface UnifiedCaptureDurations {
   totalMs?: number;
   screenshotMs?: number;
   recordingMs?: number;
+  mp4Ms?: number;
 }
 
 export interface UnifiedCaptureResult {
@@ -174,6 +203,7 @@ export interface UnifiedCaptureResult {
   requestedCaptureTypes: ('screenshot' | 'recording')[];
   screenshotResult?: ScreenshotResult;
   recordingResult?: RecordingResult;
+  mp4Result?: Mp4Result;
   outputPaths: UnifiedCaptureOutputPaths;
   timestamps: UnifiedCaptureTimestamps;
   durations: UnifiedCaptureDurations;
@@ -200,4 +230,6 @@ export interface CaptureControllerStatus {
   ready: boolean;
   activeCaptures: number;
   supportedTypes: UnifiedCaptureType[];
+  ffmpegAvailable?: boolean;
+  ffmpegVersion?: string;
 }

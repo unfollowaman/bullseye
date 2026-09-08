@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { UnifiedCaptureType, ScreenshotMode, UnifiedCaptureConfig } from '@/capture/types';
+import { UnifiedCaptureType, ScreenshotMode, UnifiedCaptureConfig, Mp4QualityPreset } from '@/capture/types';
 import { DevicePreset, CapturePreset } from '@/presets/types';
 import { BUILTIN_DEVICE_PRESETS } from '@/presets/devices';
 
@@ -24,6 +24,10 @@ export interface CaptureOptionsProps {
   setDisableAnimations: (disable: boolean) => void;
   recordingDurationMs: number;
   setRecordingDurationMs: (ms: number) => void;
+  convertToMp4?: boolean;
+  setConvertToMp4?: (convert: boolean) => void;
+  mp4Quality?: Mp4QualityPreset;
+  setMp4Quality?: (quality: Mp4QualityPreset) => void;
   additionalWaitMs: number;
   setAdditionalWaitMs: (ms: number) => void;
   timeoutMs: number;
@@ -52,6 +56,10 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
   setDisableAnimations,
   recordingDurationMs,
   setRecordingDurationMs,
+  convertToMp4 = false,
+  setConvertToMp4,
+  mp4Quality = 'medium',
+  setMp4Quality,
   additionalWaitMs,
   setAdditionalWaitMs,
   timeoutMs,
@@ -143,6 +151,16 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
     }
     const recDuration = cfg.recordingOptions?.durationMs ?? cfg.recordingDurationMs;
     if (recDuration) setRecordingDurationMs(recDuration);
+
+    const convMp4 = cfg.recordingOptions?.convertToMp4 ?? cfg.convertToMp4;
+    if (convMp4 !== undefined && setConvertToMp4) {
+      setConvertToMp4(convMp4);
+    }
+    const mp4Qual = cfg.recordingOptions?.mp4Options?.quality ?? cfg.mp4Options?.quality;
+    if (mp4Qual && setMp4Quality) {
+      setMp4Quality(mp4Qual);
+    }
+
     if (cfg.timeoutOptions?.timeoutMs !== undefined) {
       setTimeoutMs(cfg.timeoutOptions.timeoutMs);
     }
@@ -170,6 +188,10 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
       },
       recordingOptions: {
         durationMs: Number(recordingDurationMs),
+        convertToMp4,
+        mp4Options: {
+          quality: mp4Quality,
+        },
       },
       stabilizationOptions: {
         disableAnimations,
@@ -501,6 +523,43 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
                 {(recordingDurationMs / 1000).toFixed(1)} seconds
               </span>
             </div>
+
+            {/* MP4 Conversion Toggle */}
+            {setConvertToMp4 && (
+              <div className="pt-2 border-t border-purple-200/60 space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    data-testid="convert-to-mp4-checkbox"
+                    checked={convertToMp4}
+                    onChange={(e) => setConvertToMp4(e.target.checked)}
+                    disabled={disabled}
+                    className="rounded text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="font-medium text-purple-950">Convert WebM to MP4 (via local FFmpeg)</span>
+                </label>
+
+                {convertToMp4 && setMp4Quality && (
+                  <div>
+                    <label htmlFor="mp4-quality-select" className="block text-xs font-semibold text-purple-900 mb-1">
+                      MP4 Quality / Compression Strategy
+                    </label>
+                    <select
+                      id="mp4-quality-select"
+                      data-testid="mp4-quality-select"
+                      value={mp4Quality}
+                      onChange={(e) => setMp4Quality(e.target.value as Mp4QualityPreset)}
+                      disabled={disabled}
+                      className="w-full p-1.5 border border-purple-300 rounded bg-white text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="high">High Quality (CRF 18)</option>
+                      <option value="medium">Balanced / Medium (CRF 23)</option>
+                      <option value="low">Compact / Small File (CRF 28)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

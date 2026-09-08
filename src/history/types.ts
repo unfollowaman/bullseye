@@ -14,9 +14,16 @@ export interface RecordingOutputMetadata {
   format?: string;
 }
 
+export interface Mp4OutputMetadata {
+  path: string; // Safe web relative asset URL e.g. /captures/recording-123.mp4
+  durationMs?: number;
+  sizeBytes?: number;
+}
+
 export interface CaptureHistoryOutputs {
   screenshot?: ScreenshotOutputMetadata;
   recording?: RecordingOutputMetadata;
+  mp4?: Mp4OutputMetadata;
 }
 
 export interface CaptureHistoryRecord {
