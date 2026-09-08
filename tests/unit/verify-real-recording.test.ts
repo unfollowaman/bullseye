@@ -4,7 +4,7 @@ import fs from 'fs';
 import { execFileSync } from 'child_process';
 import { startTestServer, TestServer } from '../fixtures/fixture-server';
 import { captureController } from '@/capture/controller';
-import { validateWebM, validateMp4 } from '@/utils';
+import { validateWebM, validateMp4, getFFmpegBinaryPath } from '@/utils';
 import { CaptureAction } from '@/capture/action-types';
 
 describe('Real Recording Visual Verification (Phase 14)', () => {
@@ -73,11 +73,12 @@ describe('Real Recording Visual Verification (Phase 14)', () => {
     // 3. Extract Frames at 0.5s, 1.0s, 1.5s, 2.0s, 2.5s using FFmpeg for Visual Verification
     const frameOutputs: string[] = [];
     const timestamps = ['00:00:00.500', '00:00:01.000', '00:00:01.500', '00:00:02.000', '00:00:02.500'];
+    const ffmpegPath = getFFmpegBinaryPath();
 
     timestamps.forEach((ts, idx) => {
       const framePath = path.join(verificationDir, `frame-${idx + 1}-${ts.replace(/[:.]/g, '-')}.png`);
       try {
-        execFileSync('ffmpeg', [
+        execFileSync(ffmpegPath, [
           '-y',
           '-ss',
           ts,

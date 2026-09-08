@@ -34,8 +34,14 @@ export class DatabaseManager {
 
     this.db = new DatabaseSync(this.dbPath);
 
-    // Enable foreign keys
+    // Enable foreign keys, WAL mode, and busy timeout for concurrent access safety
     this.db.exec('PRAGMA foreign_keys = ON;');
+    try {
+      this.db.exec('PRAGMA journal_mode = WAL;');
+      this.db.exec('PRAGMA busy_timeout = 5000;');
+    } catch {
+      // Ignore WAL mode setting if unsupported in specific test environments
+    }
 
     // Initialize Schema
     this.initSchema();
@@ -154,7 +160,7 @@ export class DatabaseManager {
       );
     `);
 
-    // Record initial migration
+    // Record initial migrations
     const migrationCheck = this.db.prepare(
       'SELECT version FROM schema_migrations WHERE version = 1'
     ).all();

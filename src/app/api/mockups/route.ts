@@ -19,6 +19,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(mockups, { status: 200 });
   } catch (err: unknown) {
     const message = (err as Error).message || 'Failed to list mockups';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, category: 'internal' }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON request body', category: 'validation' },
+        { status: 400 }
+      );
+    }
+
+    const validation = mockupService.validateConfig(body);
+    if (!validation.valid || !validation.sanitizedConfig) {
+      return NextResponse.json(
+        { error: 'Invalid mockup configuration', errors: validation.errors, category: 'validation' },
+        { status: 400 }
+      );
+    }
+
+    const result = await mockupService.generateMockup(validation.sanitizedConfig);
+    return NextResponse.json(result, { status: 201 });
+  } catch (err: unknown) {
+    const message = (err as Error).message || 'Failed to generate mockup';
+    return NextResponse.json({ error: message, category: 'internal' }, { status: 500 });
   }
 }

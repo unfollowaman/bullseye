@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { checkFFmpegAvailability, validateMp4 } from '@/utils';
+import { checkFFmpegAvailability, getFFmpegBinaryPath, validateMp4 } from '@/utils';
 import { getSecureOutputPath } from './path-utils';
 
 export type Mp4QualityPreset = 'high' | 'medium' | 'low';
@@ -28,6 +28,7 @@ export interface Mp4ConversionResult {
 }
 
 const DEFAULT_TIMEOUT_MS = 60000;
+const MAX_STDERR_BUFFER_BYTES = 100000; // 100KB limit
 
 export class FFmpegConverter {
   async convertWebmToMp4(options: Mp4ConversionOptions): Promise<Mp4ConversionResult> {
@@ -42,7 +43,7 @@ export class FFmpegConverter {
       return { status: 'failed', error: `Input WebM file does not exist: ${options.inputPath}` };
     }
 
-    // 2. Check system FFmpeg availability
+    // 2. Check system or bundled FFmpeg availability
     const capability = await checkFFmpegAvailability();
     if (!capability.available) {
       return {
@@ -81,17 +82,17 @@ export class FFmpegConverter {
     // Ensure target directory exists
     fs.mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
 
-    // 4. Map Quality options to CRF
+    // 4. Map Quality options to CRF bounded between 10 and 40
     let crf = 23; // Default 'medium' quality
     if (options.crf !== undefined) {
-      crf = options.crf;
+      crf = Math.max(10, Math.min(40, options.crf));
     } else if (options.quality === 'high') {
       crf = 18;
     } else if (options.quality === 'low') {
       crf = 28;
     }
 
-    // 5. Construct FFmpeg arguments
+    // 5. Construct FFmpeg argument array strictly (no shell execution)
     const args: string[] = [
       '-y', // Overwrite output file if exists
       '-i',
@@ -106,14 +107,15 @@ export class FFmpegConverter {
       String(crf),
     ];
 
-    if (options.fps && options.fps > 0) {
-      args.push('-r', String(options.fps));
+    if (options.fps && options.fps > 0 && options.fps <= 120) {
+      args.push('-r', String(Math.floor(options.fps)));
     }
 
     // Audio encoding and web faststart optimizations
     args.push('-c:a', 'aac', '-movflags', '+faststart', resolvedOutputPath);
 
-    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const timeoutMs = Math.min(300000, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    const binaryPath = capability.path || getFFmpegBinaryPath();
 
     return new Promise((resolve) => {
       let child: ChildProcess | null = null;
@@ -158,9 +160,9 @@ export class FFmpegConverter {
         });
       }
 
-      // Spawn child process
+      // Spawn child process directly without shell interpolation
       try {
-        child = spawn('ffmpeg', args, {
+        child = spawn(binaryPath, args, {
           stdio: ['ignore', 'pipe', 'pipe'],
         });
       } catch (err: unknown) {
@@ -175,9 +177,9 @@ export class FFmpegConverter {
       if (child.stderr) {
         child.stderr.on('data', (chunk: Buffer) => {
           stderrBuffer += chunk.toString('utf-8');
-          // Keep buffer size manageable (last 50KB)
-          if (stderrBuffer.length > 50000) {
-            stderrBuffer = stderrBuffer.slice(-50000);
+          // Bound stderr buffer size
+          if (stderrBuffer.length > MAX_STDERR_BUFFER_BYTES) {
+            stderrBuffer = stderrBuffer.slice(-MAX_STDERR_BUFFER_BYTES);
           }
         });
       }
