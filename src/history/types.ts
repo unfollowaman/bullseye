@@ -20,10 +20,22 @@ export interface Mp4OutputMetadata {
   sizeBytes?: number;
 }
 
+export interface MockupOutputMetadata {
+  id: string;
+  mockupType: string;
+  path: string;
+  width?: number;
+  height?: number;
+  sizeBytes?: number;
+  format?: string;
+  createdAt?: string;
+}
+
 export interface CaptureHistoryOutputs {
   screenshot?: ScreenshotOutputMetadata;
   recording?: RecordingOutputMetadata;
   mp4?: Mp4OutputMetadata;
+  mockups?: MockupOutputMetadata[];
 }
 
 export interface CaptureHistoryRecord {
