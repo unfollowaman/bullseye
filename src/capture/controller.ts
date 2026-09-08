@@ -3,8 +3,9 @@ import fs from 'fs';
 import { BrowserManager, browserManager } from '@/browser/browser-manager';
 import { ScreenshotEngine, screenshotEngine } from './screenshot-engine';
 import { RecordingEngine, recordingEngine } from './recording-engine';
+import { ffmpegConverter, FFmpegConverter } from './ffmpeg-converter';
 import { CaptureLogger } from './logger';
-import { isValidUrl } from '@/utils';
+import { isValidUrl, checkFFmpegAvailability } from '@/utils';
 import { validateActions } from './action-validator';
 import { captureHistoryService, CaptureHistoryService } from '@/history/service';
 import {
@@ -19,6 +20,7 @@ import {
   ViewportDimensions,
   ScreenshotResult,
   RecordingResult,
+  Mp4Result,
 } from './types';
 
 const DEFAULT_VIEWPORT: ViewportDimensions = { width: 1280, height: 720 };
@@ -30,6 +32,7 @@ export class CaptureController {
   private browserMgr: BrowserManager;
   private screenshotEng: ScreenshotEngine;
   private recordingEng: RecordingEngine;
+  private ffmpegConv: FFmpegConverter;
   private historySvc: CaptureHistoryService;
   private jobs: Map<string, UnifiedCaptureResult> = new Map();
   private cancellationTokens: Map<string, { cancelled: boolean; cancelFn?: () => void }> = new Map();
@@ -39,20 +42,25 @@ export class CaptureController {
     manager: BrowserManager = browserManager,
     screenshotEng: ScreenshotEngine = screenshotEngine,
     recEngine: RecordingEngine = recordingEngine,
-    historySvc: CaptureHistoryService = captureHistoryService
+    historySvc: CaptureHistoryService = captureHistoryService,
+    ffmpegConv: FFmpegConverter = ffmpegConverter
   ) {
     this.browserMgr = manager;
     this.screenshotEng = screenshotEng;
     this.recordingEng = recEngine;
     this.historySvc = historySvc;
+    this.ffmpegConv = ffmpegConv;
   }
 
   async getStatus(): Promise<CaptureControllerStatus> {
     const browserHealthy = await this.browserMgr.isHealthy();
+    const ffmpegCap = await checkFFmpegAvailability();
     return {
       ready: browserHealthy,
       activeCaptures: this.activeCount,
       supportedTypes: ['screenshot', 'recording', 'both'],
+      ffmpegAvailable: ffmpegCap.available,
+      ffmpegVersion: ffmpegCap.version,
     };
   }
 
@@ -231,8 +239,10 @@ export class CaptureController {
 
     let screenshotResult: ScreenshotResult | undefined;
     let recordingResult: RecordingResult | undefined;
+    let mp4Result: Mp4Result | undefined;
     let screenshotMs: number | undefined;
     let recordingMs: number | undefined;
+    let mp4Ms: number | undefined;
 
     try {
       // Handle cancellation check prior to engine operations
@@ -345,6 +355,69 @@ export class CaptureController {
         }
       }
 
+      // 3. MP4 Conversion Operation if requested and recording succeeded
+      const convertToMp4 =
+        config.recordingOptions?.convertToMp4 ?? config.convertToMp4 ?? false;
+      const mp4Options = config.recordingOptions?.mp4Options ?? config.mp4Options;
+
+      if (
+        requestedCaptureTypes.includes('recording') &&
+        recordingResult?.status === 'completed' &&
+        recordingResult.metadata?.outputPath &&
+        convertToMp4
+      ) {
+        if (this.isCancelled(jobId)) {
+          const cancelledJob = await this.finalizeCancelledJob(jobId);
+          return this.persistHistorySafely(cancelledJob);
+        }
+
+        const mp4Start = Date.now();
+        const token = this.cancellationTokens.get(jobId);
+
+        const baseFilename =
+          config.recordingOptions?.filename || config.filename;
+        const mp4Filename = baseFilename
+          ? baseFilename.replace(/\.webm$/i, '.mp4')
+          : `recording-${jobId}.mp4`;
+
+        const convRes = await this.ffmpegConv.convertWebmToMp4({
+          inputPath: recordingResult.metadata.outputPath,
+          outputDir,
+          filename: mp4Filename,
+          quality: mp4Options?.quality,
+          crf: mp4Options?.crf,
+          fps: mp4Options?.fps,
+          timeoutMs: mp4Options?.timeoutMs,
+          cancellationToken: token,
+        });
+
+        mp4Ms = Date.now() - mp4Start;
+
+        if (convRes.status === 'completed' && convRes.outputPath) {
+          job.outputPaths.mp4 = convRes.outputPath;
+          mp4Result = {
+            status: 'completed',
+            outputPath: convRes.outputPath,
+            fileSizeBytes: convRes.fileSizeBytes,
+            durationMs: convRes.durationMs,
+          };
+          recordingResult.mp4Result = mp4Result;
+          recordingResult.metadata.mp4OutputPath = convRes.outputPath;
+        } else if (convRes.status === 'cancelled') {
+          const cancelledJob = await this.finalizeCancelledJob(jobId);
+          return this.persistHistorySafely(cancelledJob);
+        } else {
+          const err = convRes.error || 'MP4 conversion failed';
+          mp4Result = {
+            status: 'failed',
+            error: err,
+          };
+          recordingResult.mp4Result = mp4Result;
+          job.errors.push(`MP4 conversion error: ${err}`);
+          job.warnings.push(`MP4 conversion failed (${err}). Original WebM recording remains available.`);
+        }
+      }
+
       // Check cancellation during or after execution
       if (this.isCancelled(jobId)) {
         const cancelledJob = await this.finalizeCancelledJob(jobId);
@@ -360,18 +433,26 @@ export class CaptureController {
         if (requestedCaptureTypes.includes('screenshot')) {
           finalStatus = screenshotResult?.status === 'completed' ? 'completed' : 'failed';
         } else {
-          finalStatus = recordingResult?.status === 'completed' ? 'completed' : 'failed';
+          const recOk = recordingResult?.status === 'completed';
+          if (!recOk) {
+            finalStatus = 'failed';
+          } else if (convertToMp4 && mp4Result?.status === 'failed') {
+            finalStatus = 'partial';
+          } else {
+            finalStatus = 'completed';
+          }
         }
       } else {
         // Both requested
         const shotOk = screenshotResult?.status === 'completed';
         const recOk = recordingResult?.status === 'completed';
+        const mp4Ok = !convertToMp4 || mp4Result?.status === 'completed';
 
-        if (shotOk && recOk) {
+        if (shotOk && recOk && mp4Ok) {
           finalStatus = 'completed';
         } else if (shotOk || recOk) {
           finalStatus = 'partial';
-          job.warnings.push('Job partially completed: one capture type succeeded while the other failed.');
+          job.warnings.push('Job partially completed: one or more capture output steps failed.');
         } else {
           finalStatus = 'failed';
         }
@@ -389,8 +470,9 @@ export class CaptureController {
         status: finalStatus,
         screenshotResult,
         recordingResult,
+        mp4Result,
         timestamps: { ...job.timestamps, completedAt },
-        durations: { totalMs, screenshotMs, recordingMs },
+        durations: { totalMs, screenshotMs, recordingMs, mp4Ms },
         actionDiagnostics,
       };
 
@@ -456,6 +538,9 @@ export class CaptureController {
       if (existing.outputPaths.recording && fs.existsSync(existing.outputPaths.recording)) {
         try { fs.unlinkSync(existing.outputPaths.recording); } catch {}
       }
+      if (existing.outputPaths.mp4 && fs.existsSync(existing.outputPaths.mp4)) {
+        try { fs.unlinkSync(existing.outputPaths.mp4); } catch {}
+      }
     }
 
     const cancelledJob: UnifiedCaptureResult = {
@@ -506,7 +591,7 @@ export class CaptureController {
       type: primaryType,
       status: legacyStatus,
       url: unifiedResult.url,
-      outputPath: unifiedResult.outputPaths.screenshot || unifiedResult.outputPaths.recording,
+      outputPath: unifiedResult.outputPaths.screenshot || unifiedResult.outputPaths.recording || unifiedResult.outputPaths.mp4,
       metadata: primaryMeta,
       error: primaryError,
       createdAt: unifiedResult.timestamps.createdAt,

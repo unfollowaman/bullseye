@@ -80,7 +80,7 @@ export class CaptureHistoryService {
       };
     }
 
-    // 2. Process Recording output if present
+    // 2. Process Recording (WebM) output if present
     const recordingFsPath =
       jobResult.recordingResult?.metadata?.outputPath || jobResult.outputPaths?.recording;
 
@@ -101,6 +101,34 @@ export class CaptureHistoryService {
           jobResult.durations?.recordingMs ||
           0,
         format: jobResult.recordingResult?.metadata?.format || 'webm',
+        sizeBytes,
+      };
+    }
+
+    // 3. Process MP4 output if present
+    const mp4FsPath =
+      jobResult.mp4Result?.outputPath ||
+      jobResult.recordingResult?.mp4Result?.outputPath ||
+      jobResult.recordingResult?.metadata?.mp4OutputPath ||
+      jobResult.outputPaths?.mp4;
+
+    if (mp4FsPath) {
+      const safeWebPath = getPublicAssetUrl(mp4FsPath) || mp4FsPath;
+      let sizeBytes: number | undefined =
+        jobResult.mp4Result?.fileSizeBytes || jobResult.recordingResult?.mp4Result?.fileSizeBytes;
+
+      try {
+        if (!sizeBytes && fs.existsSync(mp4FsPath)) {
+          sizeBytes = fs.statSync(mp4FsPath).size;
+        }
+      } catch {}
+
+      outputs.mp4 = {
+        path: safeWebPath,
+        durationMs:
+          jobResult.mp4Result?.durationMs ||
+          jobResult.durations?.mp4Ms ||
+          0,
         sizeBytes,
       };
     }

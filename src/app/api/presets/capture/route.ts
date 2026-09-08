@@ -14,7 +14,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const body: CreateCapturePresetInput = await req.json();
+    const text = await req.text();
+    if (!text || !text.trim()) {
+      return NextResponse.json({ error: 'Request body is empty' }, { status: 400 });
+    }
+
+    const body: CreateCapturePresetInput = JSON.parse(text);
     const result = presetService.createCapturePreset(body);
 
     if (!result.validation.valid) {

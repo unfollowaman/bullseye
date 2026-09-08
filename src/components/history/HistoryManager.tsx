@@ -254,13 +254,35 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                     download
                     target="_blank"
                     rel="noreferrer"
-                    className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700"
+                    className="px-3 py-1 bg-purple-600 text-white rounded text-xs font-semibold hover:bg-purple-700"
                   >
                     Download WebM
                   </a>
                 </div>
                 <video
                   src={selectedRecord.outputs.recording.path}
+                  controls
+                  className="max-h-64 rounded border border-gray-300 w-full bg-black"
+                />
+              </div>
+            )}
+
+            {selectedRecord.outputs?.mp4 && (
+              <div className="space-y-2 border border-gray-200 rounded-lg p-3 bg-indigo-50/50">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-indigo-900">Converted Output (MP4)</span>
+                  <a
+                    href={selectedRecord.outputs.mp4.path}
+                    download
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1 bg-indigo-600 text-white rounded text-xs font-semibold hover:bg-indigo-700"
+                  >
+                    Download MP4
+                  </a>
+                </div>
+                <video
+                  src={selectedRecord.outputs.mp4.path}
                   controls
                   className="max-h-64 rounded border border-gray-300 w-full bg-black"
                 />

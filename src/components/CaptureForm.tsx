@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { UnifiedCaptureConfig, UnifiedCaptureResult, UnifiedCaptureType, ScreenshotMode } from '@/capture/types';
+import { UnifiedCaptureConfig, UnifiedCaptureResult, UnifiedCaptureType, ScreenshotMode, Mp4QualityPreset } from '@/capture/types';
 import { isValidUrl } from '@/utils/url-utils';
 import { CaptureOptions } from './CaptureOptions';
 import { CaptureStatus, ExtendedJobStatus } from './CaptureStatus';
@@ -20,6 +20,8 @@ export const CaptureForm: React.FC = () => {
   const [mode, setMode] = useState<ScreenshotMode>('viewport');
   const [disableAnimations, setDisableAnimations] = useState(false);
   const [recordingDurationMs, setRecordingDurationMs] = useState(5000);
+  const [convertToMp4, setConvertToMp4] = useState(false);
+  const [mp4Quality, setMp4Quality] = useState<Mp4QualityPreset>('medium');
   const [additionalWaitMs, setAdditionalWaitMs] = useState(0);
   const [timeoutMs, setTimeoutMs] = useState(30000);
 
@@ -113,6 +115,10 @@ export const CaptureForm: React.FC = () => {
       },
       recordingOptions: {
         durationMs: Number(recordingDurationMs),
+        convertToMp4,
+        mp4Options: {
+          quality: mp4Quality,
+        },
       },
       stabilizationOptions: {
         disableAnimations,
@@ -242,6 +248,10 @@ export const CaptureForm: React.FC = () => {
           setDisableAnimations={setDisableAnimations}
           recordingDurationMs={recordingDurationMs}
           setRecordingDurationMs={setRecordingDurationMs}
+          convertToMp4={convertToMp4}
+          setConvertToMp4={setConvertToMp4}
+          mp4Quality={mp4Quality}
+          setMp4Quality={setMp4Quality}
           additionalWaitMs={additionalWaitMs}
           setAdditionalWaitMs={setAdditionalWaitMs}
           timeoutMs={timeoutMs}

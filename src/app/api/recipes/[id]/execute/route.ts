@@ -8,13 +8,13 @@ export async function POST(
   try {
     const { id } = await params;
     let overrideOptions;
-    try {
-      const body = await req.json();
-      if (body && typeof body === 'object') {
-        overrideOptions = body;
+    const text = await req.text();
+    if (text && text.trim()) {
+      try {
+        overrideOptions = JSON.parse(text);
+      } catch {
+        // Ignore JSON parse errors for optional overrides
       }
-    } catch {
-      // Body is optional for execution
     }
 
     const result = await recipeService.executeRecipe(id, overrideOptions);

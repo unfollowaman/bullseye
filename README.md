@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bullseye — Local-First Screenshot & Video Capture Engine
+
+Bullseye is a local-first web application for website screenshots and screen recordings built with Next.js (App Router), TypeScript, Playwright, Node 22 native SQLite, and local FFmpeg.
+
+## Features
+
+- **Screenshot Engine**: Viewport and full-page PNG capture with DPR control, CSS animation disabling, and custom wait stabilization.
+- **Screen Recording Engine**: Playwright native WebM recording with duration, custom viewport, and EBML container validation.
+- **FFmpeg Video Pipeline (Phase 11)**: Local WebM → MP4 conversion with configurable quality, timeout management, process cleanup, and original WebM preservation.
+- **Action Engine**: Interactive browser step execution (clicks, typing, hover, scrolling, waiting) prior to or during capture.
+- **Projects & History**: Organized projects, execution tracking with WebM and MP4 asset persistence, and SQLite database persistence.
+- **Device & Capture Presets**: Built-in and custom reusable capture options.
+
+## System Dependencies
+
+### FFmpeg (Optional, for MP4 Conversion)
+For MP4 video conversion, FFmpeg must be installed on your local system:
+
+```bash
+# Ubuntu / Debian
+sudo apt-get update && sudo apt-get install -y ffmpeg
+
+# macOS
+brew install ffmpeg
+```
+
+For complete FFmpeg details and licensing information, see [FFMPEG.md](./FFMPEG.md).
 
 ## Getting Started
 
-First, run the development server:
+1. Install dependencies:
+   ```bash
+   npm install
+   npx playwright install chromium
+   ```
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+2. Run the development server:
+   ```bash
+   npm run dev
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Testing & Quality Assurance
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Unit Tests**: `npm test`
+- **Type Check**: `npm run typecheck`
+- **Lint**: `npm run lint`
+- **End-to-End Tests**: `npm run test:e2e`
+- **Production Build**: `npm run build`
