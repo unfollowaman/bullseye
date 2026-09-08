@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
-import { ScreenshotEngine } from '../../src/capture/screenshot-engine.ts';
-import { mockupService } from '../../src/mockup/service.ts';
+import { ScreenshotEngine } from '../../src/capture/screenshot-engine';
+import { mockupService } from '../../src/mockup/service';
 
 describe('Real Screenshot & Mockup Generation Verification', () => {
   it('generates real screenshot and renders 4 real mockups, verifying image decodability, dimensions, framing, backgrounds, and composition', async () => {
@@ -11,9 +11,8 @@ describe('Real Screenshot & Mockup Generation Verification', () => {
     const screenshotEngine = new ScreenshotEngine();
     const captureResult = await screenshotEngine.capture({
       url: 'https://example.com',
-      captureType: 'screenshot',
       viewport: { width: 1280, height: 800 },
-      screenshotOptions: { mode: 'viewport' },
+      mode: 'viewport',
     });
 
     expect(captureResult.status).toBe('completed');

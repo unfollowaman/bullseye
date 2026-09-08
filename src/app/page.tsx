@@ -8,11 +8,13 @@ import { ProjectManager } from '@/components/projects/ProjectManager';
 import { RecipeManager } from '@/components/recipes/RecipeManager';
 import { HistoryManager } from '@/components/history/HistoryManager';
 import { MockupGenerator } from '@/components/mockups/MockupGenerator';
+import { VisualQAManager } from '@/components/visual-qa/VisualQAManager';
+import { NavTabType } from '@/components/Navigation';
 
 export default function HomePage() {
   const [systemStatus, setSystemStatus] = useState<CaptureControllerStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'capture' | 'projects' | 'recipes' | 'history' | 'mockups'>('capture');
+  const [activeTab, setActiveTab] = useState<NavTabType>('capture');
 
   useEffect(() => {
     async function checkStatus() {
@@ -70,6 +72,12 @@ export default function HomePage() {
         {activeTab === 'mockups' && (
           <section data-testid="main-mockups-section">
             <MockupGenerator />
+          </section>
+        )}
+
+        {activeTab === 'visual-qa' && (
+          <section data-testid="main-visual-qa-section">
+            <VisualQAManager />
           </section>
         )}
       </div>

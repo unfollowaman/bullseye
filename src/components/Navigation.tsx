@@ -4,11 +4,13 @@ import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { CaptureControllerStatus } from '@/capture/types';
 
+export type NavTabType = 'capture' | 'projects' | 'recipes' | 'history' | 'mockups' | 'visual-qa';
+
 interface NavigationProps {
   systemStatus?: CaptureControllerStatus | null;
   statusLoading?: boolean;
-  activeTab?: 'capture' | 'projects' | 'recipes' | 'history' | 'mockups';
-  onTabChange?: (tab: 'capture' | 'projects' | 'recipes' | 'history' | 'mockups') => void;
+  activeTab?: NavTabType;
+  onTabChange?: (tab: NavTabType) => void;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -30,9 +32,11 @@ export const Navigation: React.FC<NavigationProps> = ({
       ? 'history'
       : pathname === '/mockups'
       ? 'mockups'
+      : pathname === '/visual-qa'
+      ? 'visual-qa'
       : 'capture');
 
-  const handleTabClick = (tab: 'capture' | 'projects' | 'recipes' | 'history' | 'mockups') => {
+  const handleTabClick = (tab: NavTabType) => {
     if (onTabChange) {
       onTabChange(tab);
     } else {
@@ -150,6 +154,18 @@ export const Navigation: React.FC<NavigationProps> = ({
           }`}
         >
           Mockups
+        </button>
+        <button
+          type="button"
+          data-testid="nav-tab-visual-qa"
+          onClick={() => handleTabClick('visual-qa')}
+          className={`px-4 py-2 rounded-md transition-colors ${
+            currentTab === 'visual-qa'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'hover:text-gray-900 hover:bg-gray-200/50'
+          }`}
+        >
+          Visual QA
         </button>
       </nav>
     </header>

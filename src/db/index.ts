@@ -127,6 +127,31 @@ export class DatabaseManager {
         created_at TEXT NOT NULL,
         FOREIGN KEY (source_capture_id) REFERENCES capture_history(id) ON DELETE SET NULL
       );
+
+      CREATE TABLE IF NOT EXISTS visual_qa_comparisons (
+        id TEXT PRIMARY KEY,
+        baseline_capture_id TEXT,
+        baseline_asset_path TEXT NOT NULL,
+        current_capture_id TEXT,
+        current_asset_path TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        match INTEGER NOT NULL,
+        changed_pixels INTEGER NOT NULL,
+        total_pixels INTEGER NOT NULL,
+        changed_percentage REAL NOT NULL,
+        config TEXT NOT NULL,
+        diff_asset_path TEXT,
+        diff_web_path TEXT,
+        overlay_asset_path TEXT,
+        overlay_web_path TEXT,
+        dimensions TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        warnings TEXT,
+        error TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (baseline_capture_id) REFERENCES capture_history(id) ON DELETE SET NULL,
+        FOREIGN KEY (current_capture_id) REFERENCES capture_history(id) ON DELETE SET NULL
+      );
     `);
 
     // Record initial migration
@@ -158,6 +183,16 @@ export class DatabaseManager {
       this.db.prepare(
         'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)'
       ).run(3, new Date().toISOString());
+    }
+
+    const migration4Check = this.db.prepare(
+      'SELECT version FROM schema_migrations WHERE version = 4'
+    ).all();
+
+    if (migration4Check.length === 0) {
+      this.db.prepare(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)'
+      ).run(4, new Date().toISOString());
     }
   }
 
