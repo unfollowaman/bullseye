@@ -1,4 +1,4 @@
-import { CaptureAction, ActionDiagnostic } from './action-types';
+import { CaptureAction, ActionDiagnostic, AdvancedRecordingConfig } from './action-types';
 
 export * from './action-types';
 
@@ -74,6 +74,7 @@ export interface RecordingOptions {
   actions?: CaptureAction[];
   convertToMp4?: boolean;
   mp4Options?: Mp4ConfigOptions;
+  advancedRecordingOptions?: AdvancedRecordingConfig;
 }
 
 export interface Mp4Result {
@@ -98,6 +99,7 @@ export interface RecordingMetadata {
   capturedAt: string;
   fileSizeBytes: number;
   actionDiagnostics?: ActionDiagnostic[];
+  advancedRecordingOptions?: AdvancedRecordingConfig;
 }
 
 export interface RecordingResult {
@@ -118,6 +120,7 @@ export interface CaptureOptions extends ScreenshotOptions {
   recipeId?: string;
   convertToMp4?: boolean;
   mp4Options?: Mp4ConfigOptions;
+  advancedRecordingOptions?: AdvancedRecordingConfig;
 }
 
 // Unified Capture Config options structure for Phase 4 & Phase 9
@@ -132,6 +135,7 @@ export interface UnifiedRecordingOptions {
   filename?: string;
   convertToMp4?: boolean;
   mp4Options?: Mp4ConfigOptions;
+  advancedRecordingOptions?: AdvancedRecordingConfig;
 }
 
 export interface StabilizationOptions {
@@ -162,6 +166,7 @@ export interface UnifiedCaptureConfig {
   actions?: CaptureAction[];
   convertToMp4?: boolean;
   mp4Options?: Mp4ConfigOptions;
+  advancedRecordingOptions?: AdvancedRecordingConfig;
   // Flattened / legacy fallbacks for maximum usability:
   mode?: ScreenshotMode;
   fullPage?: boolean;

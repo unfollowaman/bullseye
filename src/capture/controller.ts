@@ -324,6 +324,9 @@ export class CaptureController {
           config.recordingOptions?.filename ??
           (rawType === 'both' ? `recording-${jobId}.webm` : config.filename ?? `recording-${jobId}.webm`);
 
+        const advancedRecordingOptions =
+          config.recordingOptions?.advancedRecordingOptions ?? config.advancedRecordingOptions;
+
         const token = this.cancellationTokens.get(jobId);
         const recOptions: RecordingOptions = {
           url: config.url,
@@ -336,6 +339,7 @@ export class CaptureController {
           filename: recordingFilename,
           cancellationToken: token,
           actions: config.actions,
+          advancedRecordingOptions,
         };
 
         recordingResult = await this.recordingEng.record(recOptions);

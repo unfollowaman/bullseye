@@ -12,6 +12,8 @@ import {
   HoverAction,
   TypeTextAction,
   KeyPressAction,
+  SetCursorVisibilityAction,
+  MovementEasing,
 } from './action-types';
 import { validateActions } from './action-validator';
 
@@ -48,6 +50,8 @@ export class ActionExecutor {
     let hasFailed = false;
     let globalError: string | undefined;
 
+    const actionPacingMs = options.advancedRecordingOptions?.actionPacingMs || 0;
+
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
 
@@ -67,6 +71,11 @@ export class ActionExecutor {
         continue;
       }
 
+      // Inter-action pacing delay if configured
+      if (i > 0 && actionPacingMs > 0) {
+        await this.executeWait({ type: 'wait', durationMs: actionPacingMs }, options.cancellationToken, page);
+      }
+
       const actStartMs = Date.now();
       const actStartIso = new Date(actStartMs).toISOString();
       const timeoutMs = action.actionTimeoutMs ?? options.defaultTimeoutMs ?? DEFAULT_ACTION_TIMEOUT_MS;
@@ -75,9 +84,15 @@ export class ActionExecutor {
         await this.executeWithTimeout(
           page,
           action,
-          options.cancellationToken,
+          options,
           timeoutMs
         );
+
+        // Execute post-action pause if specified
+        const postPause = action.postPauseMs ?? action.pauseMs;
+        if (postPause && postPause > 0) {
+          await this.executeWait({ type: 'wait', durationMs: postPause }, options.cancellationToken, page);
+        }
 
         const actEndMs = Date.now();
         diagnostics.push({
@@ -124,7 +139,7 @@ export class ActionExecutor {
   private async executeWithTimeout(
     page: Page,
     action: CaptureAction,
-    cancellationToken?: { cancelled: boolean },
+    options: ActionExecutorOptions,
     timeoutMs: number = DEFAULT_ACTION_TIMEOUT_MS
   ): Promise<void> {
     let timeoutId: NodeJS.Timeout | null = null;
@@ -137,7 +152,7 @@ export class ActionExecutor {
 
     try {
       await Promise.race([
-        this.runSingleAction(page, action, cancellationToken),
+        this.runSingleAction(page, action, options),
         timeoutPromise,
       ]);
     } finally {
@@ -150,14 +165,16 @@ export class ActionExecutor {
   private async runSingleAction(
     page: Page,
     action: CaptureAction,
-    cancellationToken?: { cancelled: boolean }
+    options: ActionExecutorOptions
   ): Promise<void> {
+    const cancellationToken = options.cancellationToken;
     if (cancellationToken?.cancelled) {
       throw new Error('Action execution cancelled');
     }
 
     switch (action.type) {
       case 'wait':
+      case 'pause':
         await this.executeWait(action, cancellationToken, page);
         break;
 
@@ -195,6 +212,11 @@ export class ActionExecutor {
         await this.executeKeyPress(page, action, cancellationToken);
         break;
 
+      case 'set_cursor_visibility':
+      case 'setCursorVisibility':
+        await this.executeSetCursorVisibility(page, action, cancellationToken);
+        break;
+
       default:
         throw new Error(`Unsupported action type: ${(action as { type: string }).type}`);
     }
@@ -204,13 +226,13 @@ export class ActionExecutor {
     }
   }
 
-  // 1. Wait Action
+  // 1. Wait / Pause Action
   private async executeWait(
-    action: WaitAction,
+    action: WaitAction | { type: string; durationMs?: number; pauseMs?: number },
     cancellationToken?: { cancelled: boolean },
     page?: Page
   ): Promise<void> {
-    const durationMs = action.durationMs;
+    const durationMs = action.durationMs ?? action.pauseMs ?? 1000;
     const sliceMs = 50;
     let elapsed = 0;
 
@@ -239,10 +261,10 @@ export class ActionExecutor {
     const y = action.y;
     const durationMs = action.durationMs || 0;
 
-    if (durationMs > 0) {
+    if (durationMs > 0 || action.smooth) {
       await this.executeSmoothScroll(
         page,
-        { type: 'smooth_scroll', x, y, durationMs },
+        { type: 'smooth_scroll', x, y, durationMs: durationMs || 800, easing: action.easing },
         cancellationToken
       );
     } else {
@@ -267,10 +289,10 @@ export class ActionExecutor {
     const x = action.x || 0;
     const y = action.y;
     const durationMs = action.durationMs || 1000;
+    const easing = action.easing || 'ease-in-out';
 
-    // Execute smooth scroll via page evaluation using quadratic ease-in-out steps
     await page.evaluate(
-      async ({ dx, dy, duration }) => {
+      async ({ dx, dy, duration, easeName }) => {
         const startX = window.scrollX;
         const startY = window.scrollY;
         const targetX = startX + dx;
@@ -281,16 +303,20 @@ export class ActionExecutor {
           function step(now: number) {
             const elapsed = now - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            // Ease-in-out quadratic function
-            const ease =
-              progress < 0.5
-                ? 2 * progress * progress
-                : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
-            window.scrollTo(
-              startX + (targetX - startX) * ease,
-              startY + (targetY - startY) * ease
-            );
+            let ease = progress;
+            if (easeName === 'ease-in-out') {
+              ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+            } else if (easeName === 'ease-in') {
+              ease = progress * progress;
+            } else if (easeName === 'ease-out') {
+              ease = 1 - (1 - progress) * (1 - progress);
+            }
+
+            const currX = startX + (targetX - startX) * ease;
+            const currY = startY + (targetY - startY) * ease;
+
+            window.scrollTo(currX, currY);
 
             if (progress < 1) {
               requestAnimationFrame(step);
@@ -301,7 +327,7 @@ export class ActionExecutor {
           requestAnimationFrame(step);
         });
       },
-      { dx: x, dy: y, duration: durationMs }
+      { dx: x, dy: y, duration: durationMs, easeName: easing }
     );
   }
 
@@ -313,9 +339,29 @@ export class ActionExecutor {
   ): Promise<void> {
     if (cancellationToken?.cancelled) throw new Error('Action cancelled');
 
-    const { x, y, durationMs } = action;
-    const steps = durationMs ? Math.max(1, Math.floor(durationMs / 16)) : 1;
+    const { x, y, durationMs, easing } = action;
+    const duration = durationMs || 0;
 
+    // First trigger smooth movement in browser overlay if present
+    const hasOverlay = await page.evaluate(() => !!window.__bullseyeOverlay);
+    if (hasOverlay) {
+      await page.evaluate(
+        async ({ targetX, targetY, dur, ease }) => {
+          if (window.__bullseyeOverlay) {
+            await window.__bullseyeOverlay.moveCursorSmooth(
+              targetX,
+              targetY,
+              dur,
+              ease as MovementEasing
+            );
+          }
+        },
+        { targetX: x, targetY: y, dur: duration, ease: easing || 'ease-in-out' }
+      );
+    }
+
+    // Also move Playwright actual mouse cursor to trigger website hover events
+    const steps = duration > 0 ? Math.max(1, Math.floor(duration / 16)) : 1;
     await page.mouse.move(x, y, { steps });
   }
 
@@ -329,17 +375,47 @@ export class ActionExecutor {
 
     const button = action.button || 'left';
     const clickCount = action.clickCount || 1;
+    let targetX: number | undefined = action.x;
+    let targetY: number | undefined = action.y;
+
+    if (action.selector) {
+      // Find element center coordinates
+      const box = await page.locator(action.selector).first().boundingBox().catch(() => null);
+      if (box) {
+        targetX = box.x + box.width / 2;
+        targetY = box.y + box.height / 2;
+      }
+    }
+
+    // Smooth move to target if durationMs set
+    if (typeof targetX === 'number' && typeof targetY === 'number') {
+      const moveDuration = action.durationMs || 0;
+      await this.executeMouseMove(
+        page,
+        { type: 'mouse_move', x: targetX, y: targetY, durationMs: moveDuration, easing: 'ease-in-out' },
+        cancellationToken
+      );
+
+      // Trigger click indicator on overlay
+      if (action.showIndicator !== false) {
+        await page.evaluate(
+          ({ cx, cy, btn }) => {
+            if (window.__bullseyeOverlay) {
+              window.__bullseyeOverlay.showClickIndicator(cx, cy, btn);
+            }
+          },
+          { cx: targetX, cy: targetY, btn: button }
+        );
+      }
+    }
 
     if (action.selector) {
       await page.click(action.selector, {
         button,
         clickCount,
       });
-    } else if (typeof action.x === 'number' && typeof action.y === 'number') {
-      const steps = action.durationMs ? Math.max(1, Math.floor(action.durationMs / 16)) : 1;
-      await page.mouse.move(action.x, action.y, { steps });
-      if (cancellationToken?.cancelled) throw new Error('Action cancelled');
-      await page.mouse.click(action.x, action.y, {
+    } else if (typeof targetX === 'number' && typeof targetY === 'number') {
+      await page.mouse.click(targetX, targetY, {
         button,
         clickCount,
       });
@@ -356,11 +432,25 @@ export class ActionExecutor {
   ): Promise<void> {
     if (cancellationToken?.cancelled) throw new Error('Action cancelled');
 
+    let targetX: number | undefined = action.x;
+    let targetY: number | undefined = action.y;
+
     if (action.selector) {
+      const box = await page.locator(action.selector).first().boundingBox().catch(() => null);
+      if (box) {
+        targetX = box.x + box.width / 2;
+        targetY = box.y + box.height / 2;
+      }
+    }
+
+    if (typeof targetX === 'number' && typeof targetY === 'number') {
+      await this.executeMouseMove(
+        page,
+        { type: 'mouse_move', x: targetX, y: targetY, durationMs: action.durationMs || 300, easing: 'ease-in-out' },
+        cancellationToken
+      );
+    } else if (action.selector) {
       await page.hover(action.selector);
-    } else if (typeof action.x === 'number' && typeof action.y === 'number') {
-      const steps = action.durationMs ? Math.max(1, Math.floor(action.durationMs / 16)) : 1;
-      await page.mouse.move(action.x, action.y, { steps });
     } else {
       throw new Error("Hover action requires either 'selector' or 'x' and 'y' coordinates");
     }
@@ -402,6 +492,21 @@ export class ActionExecutor {
 
     const delay = action.delayMs || 0;
     await page.keyboard.press(keyCombo, { delay });
+  }
+
+  // 9. Set Cursor Visibility Action
+  private async executeSetCursorVisibility(
+    page: Page,
+    action: SetCursorVisibilityAction,
+    cancellationToken?: { cancelled: boolean }
+  ): Promise<void> {
+    if (cancellationToken?.cancelled) throw new Error('Action cancelled');
+
+    await page.evaluate((vis) => {
+      if (window.__bullseyeOverlay) {
+        window.__bullseyeOverlay.setCursorVisible(vis);
+      }
+    }, action.visible);
   }
 }
 

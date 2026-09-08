@@ -28,6 +28,12 @@ export interface CaptureOptionsProps {
   setConvertToMp4?: (convert: boolean) => void;
   mp4Quality?: Mp4QualityPreset;
   setMp4Quality?: (quality: Mp4QualityPreset) => void;
+  advancedCursorEnabled?: boolean;
+  setAdvancedCursorEnabled?: (enabled: boolean) => void;
+  advancedClickIndicatorEnabled?: boolean;
+  setAdvancedClickIndicatorEnabled?: (enabled: boolean) => void;
+  advancedCursorStyle?: 'default' | 'dot' | 'pointer' | 'brand';
+  setAdvancedCursorStyle?: (style: 'default' | 'dot' | 'pointer' | 'brand') => void;
   additionalWaitMs: number;
   setAdditionalWaitMs: (ms: number) => void;
   timeoutMs: number;
@@ -60,6 +66,12 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
   setConvertToMp4,
   mp4Quality = 'medium',
   setMp4Quality,
+  advancedCursorEnabled = true,
+  setAdvancedCursorEnabled,
+  advancedClickIndicatorEnabled = true,
+  setAdvancedClickIndicatorEnabled,
+  advancedCursorStyle = 'default',
+  setAdvancedCursorStyle,
   additionalWaitMs,
   setAdditionalWaitMs,
   timeoutMs,
@@ -161,6 +173,19 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
       setMp4Quality(mp4Qual);
     }
 
+    const advRec = cfg.recordingOptions?.advancedRecordingOptions ?? cfg.advancedRecordingOptions;
+    if (advRec) {
+      if (advRec.cursorEnabled !== undefined && setAdvancedCursorEnabled) {
+        setAdvancedCursorEnabled(advRec.cursorEnabled);
+      }
+      if (advRec.clickIndicatorEnabled !== undefined && setAdvancedClickIndicatorEnabled) {
+        setAdvancedClickIndicatorEnabled(advRec.clickIndicatorEnabled);
+      }
+      if (advRec.cursorStyle && setAdvancedCursorStyle) {
+        setAdvancedCursorStyle(advRec.cursorStyle);
+      }
+    }
+
     if (cfg.timeoutOptions?.timeoutMs !== undefined) {
       setTimeoutMs(cfg.timeoutOptions.timeoutMs);
     }
@@ -191,6 +216,11 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
         convertToMp4,
         mp4Options: {
           quality: mp4Quality,
+        },
+        advancedRecordingOptions: {
+          cursorEnabled: advancedCursorEnabled,
+          clickIndicatorEnabled: advancedClickIndicatorEnabled,
+          cursorStyle: advancedCursorStyle,
         },
       },
       stabilizationOptions: {
@@ -522,6 +552,53 @@ export const CaptureOptions: React.FC<CaptureOptionsProps> = ({
               <span className="text-xs text-gray-500 mt-1 block">
                 {(recordingDurationMs / 1000).toFixed(1)} seconds
               </span>
+            </div>
+
+            {/* Advanced Demo Visual Toggles */}
+            <div className="pt-2 border-t border-purple-200/60 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  data-testid="cursor-enabled-checkbox"
+                  checked={advancedCursorEnabled}
+                  onChange={(e) => setAdvancedCursorEnabled && setAdvancedCursorEnabled(e.target.checked)}
+                  disabled={disabled}
+                  className="rounded text-purple-600 focus:ring-purple-500"
+                />
+                <span className="font-medium text-xs text-purple-950">Cursor Visualization Overlay</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  data-testid="click-indicator-checkbox"
+                  checked={advancedClickIndicatorEnabled}
+                  onChange={(e) => setAdvancedClickIndicatorEnabled && setAdvancedClickIndicatorEnabled(e.target.checked)}
+                  disabled={disabled}
+                  className="rounded text-purple-600 focus:ring-purple-500"
+                />
+                <span className="font-medium text-xs text-purple-950">Click Indicator Ripple Animations</span>
+              </label>
+
+              {advancedCursorEnabled && setAdvancedCursorStyle && (
+                <div>
+                  <label htmlFor="cursor-style-select" className="block text-[11px] font-semibold text-purple-900 mb-0.5">
+                    Cursor Style
+                  </label>
+                  <select
+                    id="cursor-style-select"
+                    data-testid="cursor-style-select"
+                    value={advancedCursorStyle}
+                    onChange={(e) => setAdvancedCursorStyle(e.target.value as 'default' | 'dot' | 'pointer' | 'brand')}
+                    disabled={disabled}
+                    className="w-full p-1.5 border border-purple-300 rounded bg-white text-xs text-gray-800"
+                  >
+                    <option value="default">Default Blue Arrow</option>
+                    <option value="dot">Highlight Dot Circle</option>
+                    <option value="brand">Brand Red Pointer</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* MP4 Conversion Toggle */}
