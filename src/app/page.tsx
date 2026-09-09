@@ -9,6 +9,7 @@ import { RecipeManager } from '@/components/recipes/RecipeManager';
 import { HistoryManager } from '@/components/history/HistoryManager';
 import { MockupGenerator } from '@/components/mockups/MockupGenerator';
 import { VisualQAManager } from '@/components/visual-qa/VisualQAManager';
+import { ReceiptPrinterCardDemo } from '@/components/ReceiptPrinterCardDemo';
 import { NavTabType } from '@/components/Navigation';
 
 export default function HomePage() {
@@ -43,6 +44,11 @@ export default function HomePage() {
           activeTab={activeTab}
           onTabChange={setActiveTab}
         />
+
+        {/* Checkout Receipt Printer Card Demo */}
+        <section data-testid="receipt-printer-demo-section">
+          <ReceiptPrinterCardDemo />
+        </section>
 
         {/* Tab Content */}
         {activeTab === 'capture' && (
