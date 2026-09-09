@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+data/*.db
+data/*.db-journal
+data/*.db-wal
+public/captures/*
+!public/captures/.gitkeep
+npm-debug.log
+Dockerfile
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

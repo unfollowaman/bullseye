@@ -47,6 +47,13 @@ export async function injectRecordingOverlay(
   }
 
   await page.evaluate((opts) => {
+    // Defense against tsx/esbuild __name helper injection during browser serialization
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (typeof (globalThis as any).__name === 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).__name = (f: any) => f;
+    }
+
     // Prevent duplicate injection
     if (window.__bullseyeOverlay && window.__bullseyeOverlay.isInitialized) {
       return;
