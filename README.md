@@ -26,6 +26,7 @@ brew install ffmpeg
 
 For complete FFmpeg details and licensing information, see [FFMPEG.md](./FFMPEG.md).
 For production hardening details and security policies, see [HARDENING.md](./HARDENING.md).
+For Linux ARM64 (aarch64) deployment and Oracle Cloud Ampere A1 verification, see [ARM64.md](./ARM64.md).
 
 ## Getting Started
 
@@ -48,4 +49,5 @@ For production hardening details and security policies, see [HARDENING.md](./HAR
 - **Type Check**: `npm run typecheck`
 - **Lint**: `npm run lint`
 - **End-to-End Tests**: `npm run test:e2e`
+- **ARM64 Smoke Test**: `npm run smoke:arm64`
 - **Production Build**: `npm run build`
