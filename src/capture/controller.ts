@@ -8,6 +8,7 @@ import { CaptureLogger } from './logger';
 import { isValidUrl, checkFFmpegAvailability } from '@/utils';
 import { validateActions } from './action-validator';
 import { captureHistoryService, CaptureHistoryService } from '@/history/service';
+import { config as appConfig } from '@/config';
 import {
   CaptureOptions,
   CaptureResult,
@@ -37,6 +38,8 @@ export class CaptureController {
   private jobs: Map<string, UnifiedCaptureResult> = new Map();
   private cancellationTokens: Map<string, { cancelled: boolean; cancelFn?: () => void }> = new Map();
   private activeCount: number = 0;
+  private maxConcurrentJobs: number = appConfig.maxConcurrentJobs || 4;
+  private concurrencyQueue: (() => void)[] = [];
 
   constructor(
     manager: BrowserManager = browserManager,
@@ -50,6 +53,22 @@ export class CaptureController {
     this.recordingEng = recEngine;
     this.historySvc = historySvc;
     this.ffmpegConv = ffmpegConv;
+  }
+
+  private async acquireConcurrencySlot(): Promise<void> {
+    if (this.activeCount < this.maxConcurrentJobs) {
+      return;
+    }
+    return new Promise<void>((resolve) => {
+      this.concurrencyQueue.push(resolve);
+    });
+  }
+
+  private releaseConcurrencySlot(): void {
+    const next = this.concurrencyQueue.shift();
+    if (next) {
+      next();
+    }
   }
 
   async getStatus(): Promise<CaptureControllerStatus> {
@@ -86,7 +105,7 @@ export class CaptureController {
       errors.push(`Invalid capture type: '${rawType}'. Must be 'screenshot', 'recording', or 'both'.`);
     }
 
-    // 3. Viewport validation
+    // 3. Viewport validation & bounds
     if (config.viewport) {
       if (
         typeof config.viewport.width !== 'number' ||
@@ -94,13 +113,18 @@ export class CaptureController {
         isNaN(config.viewport.width)
       ) {
         errors.push('Viewport width must be a positive number');
+      } else if (config.viewport.width > appConfig.maxViewportWidth) {
+        errors.push(`Viewport width cannot exceed ${appConfig.maxViewportWidth}px`);
       }
+
       if (
         typeof config.viewport.height !== 'number' ||
         config.viewport.height <= 0 ||
         isNaN(config.viewport.height)
       ) {
         errors.push('Viewport height must be a positive number');
+      } else if (config.viewport.height > appConfig.maxViewportHeight) {
+        errors.push(`Viewport height cannot exceed ${appConfig.maxViewportHeight}px`);
       }
     }
 
@@ -112,22 +136,28 @@ export class CaptureController {
         isNaN(config.deviceScaleFactor)
       ) {
         errors.push('Device scale factor (DPR) must be a positive number');
+      } else if (config.deviceScaleFactor > 4) {
+        errors.push('Device scale factor (DPR) cannot exceed 4');
       }
     }
 
-    // 5. Timeout options validation
+    // 5. Timeout options validation & bounds
     const timeout = config.timeoutOptions?.timeoutMs ?? config.timeout;
     if (timeout !== undefined) {
       if (typeof timeout !== 'number' || timeout <= 0 || isNaN(timeout)) {
         errors.push('Timeout must be a positive number (milliseconds)');
+      } else if (timeout > appConfig.maxTimeoutMs) {
+        errors.push(`Timeout cannot exceed ${appConfig.maxTimeoutMs}ms`);
       }
     }
 
-    // 6. Recording options validation
+    // 6. Recording options validation & bounds
     const recDuration = config.recordingOptions?.durationMs ?? config.recordingDurationMs;
     if (recDuration !== undefined) {
       if (typeof recDuration !== 'number' || recDuration < 0 || isNaN(recDuration)) {
         errors.push('Recording duration must be a non-negative number (milliseconds)');
+      } else if (recDuration > appConfig.maxRecordingDurationMs) {
+        errors.push(`Recording duration cannot exceed ${appConfig.maxRecordingDurationMs}ms`);
       }
     }
 
@@ -224,6 +254,15 @@ export class CaptureController {
       return this.persistHistorySafely(job);
     }
 
+    // Acquire concurrency slot before browser launch
+    await this.acquireConcurrencySlot();
+
+    // Check cancellation after acquiring slot
+    if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+      const cJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
+      return this.persistHistorySafely(cJob);
+    }
+
     // Transition to running
     const startedAt = new Date().toISOString();
     const startTime = Date.now();
@@ -246,8 +285,8 @@ export class CaptureController {
 
     try {
       // Handle cancellation check prior to engine operations
-      if (this.isCancelled(jobId)) {
-        const cancelledJob = await this.finalizeCancelledJob(jobId);
+      if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+        const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
         return this.persistHistorySafely(cancelledJob);
       }
 
@@ -260,8 +299,8 @@ export class CaptureController {
 
       // 1. Screenshot Operation if requested
       if (requestedCaptureTypes.includes('screenshot')) {
-        if (this.isCancelled(jobId)) {
-          const cancelledJob = await this.finalizeCancelledJob(jobId);
+        if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+          const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
           return this.persistHistorySafely(cancelledJob);
         }
 
@@ -293,6 +332,11 @@ export class CaptureController {
         screenshotResult = await this.screenshotEng.capture(shotOptions);
         screenshotMs = Date.now() - shotStart;
 
+        if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+          const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
+          return this.persistHistorySafely(cancelledJob);
+        }
+
         if (screenshotResult.status === 'completed' && screenshotResult.metadata) {
           job.outputPaths.screenshot = screenshotResult.metadata.outputPath;
           CaptureLogger.logScreenshotCompleted(
@@ -309,8 +353,8 @@ export class CaptureController {
 
       // 2. Recording Operation if requested
       if (requestedCaptureTypes.includes('recording')) {
-        if (this.isCancelled(jobId)) {
-          const cancelledJob = await this.finalizeCancelledJob(jobId);
+        if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+          const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
           return this.persistHistorySafely(cancelledJob);
         }
 
@@ -345,6 +389,11 @@ export class CaptureController {
         recordingResult = await this.recordingEng.record(recOptions);
         recordingMs = Date.now() - recStart;
 
+        if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+          const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
+          return this.persistHistorySafely(cancelledJob);
+        }
+
         if (recordingResult.status === 'completed' && recordingResult.metadata) {
           job.outputPaths.recording = recordingResult.metadata.outputPath;
           CaptureLogger.logRecordingCompleted(
@@ -370,8 +419,8 @@ export class CaptureController {
         recordingResult.metadata?.outputPath &&
         convertToMp4
       ) {
-        if (this.isCancelled(jobId)) {
-          const cancelledJob = await this.finalizeCancelledJob(jobId);
+        if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+          const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
           return this.persistHistorySafely(cancelledJob);
         }
 
@@ -397,6 +446,11 @@ export class CaptureController {
 
         mp4Ms = Date.now() - mp4Start;
 
+        if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+          const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
+          return this.persistHistorySafely(cancelledJob);
+        }
+
         if (convRes.status === 'completed' && convRes.outputPath) {
           job.outputPaths.mp4 = convRes.outputPath;
           mp4Result = {
@@ -408,7 +462,7 @@ export class CaptureController {
           recordingResult.mp4Result = mp4Result;
           recordingResult.metadata.mp4OutputPath = convRes.outputPath;
         } else if (convRes.status === 'cancelled') {
-          const cancelledJob = await this.finalizeCancelledJob(jobId);
+          const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
           return this.persistHistorySafely(cancelledJob);
         } else {
           const err = convRes.error || 'MP4 conversion failed';
@@ -423,8 +477,8 @@ export class CaptureController {
       }
 
       // Check cancellation during or after execution
-      if (this.isCancelled(jobId)) {
-        const cancelledJob = await this.finalizeCancelledJob(jobId);
+      if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+        const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
         return this.persistHistorySafely(cancelledJob);
       }
 
@@ -484,6 +538,11 @@ export class CaptureController {
       CaptureLogger.logCaptureCompleted(jobId, finalStatus, totalMs);
       return this.persistHistorySafely(job);
     } catch (err: unknown) {
+      if (this.isCancelled(jobId) || this.jobs.get(jobId)?.status === 'cancelled') {
+        const cancelledJob = this.jobs.get(jobId) || (await this.finalizeCancelledJob(jobId));
+        return this.persistHistorySafely(cancelledJob);
+      }
+
       const errorMessage = err instanceof Error ? err.message : 'Unknown execution error';
       job.errors.push(errorMessage);
       job = {
@@ -498,6 +557,7 @@ export class CaptureController {
     } finally {
       this.activeCount = Math.max(0, this.activeCount - 1);
       this.cancellationTokens.delete(jobId);
+      this.releaseConcurrencySlot();
       CaptureLogger.logCleanup(jobId);
     }
   }

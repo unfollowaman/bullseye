@@ -4,12 +4,27 @@ import { UnifiedCaptureConfig } from '@/capture/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const body: UnifiedCaptureConfig = await request.json();
+    let body: UnifiedCaptureConfig;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON body provided in request', category: 'validation' },
+        { status: 400 }
+      );
+    }
+
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json(
+        { error: 'Request body must be a valid JSON object', category: 'validation' },
+        { status: 400 }
+      );
+    }
 
     const validation = captureController.validateConfig(body);
     if (!validation.valid) {
       return NextResponse.json(
-        { error: validation.errors.join('; '), errors: validation.errors },
+        { error: validation.errors.join('; '), errors: validation.errors, category: 'validation' },
         { status: 400 }
       );
     }
@@ -25,7 +40,7 @@ export async function POST(request: NextRequest) {
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Internal server error';
     return NextResponse.json(
-      { error: errorMessage },
+      { error: errorMessage, category: 'internal' },
       { status: 500 }
     );
   }

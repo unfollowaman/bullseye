@@ -55,18 +55,19 @@ export class ActionExecutor {
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
 
-      // Check cancellation prior to starting action
-      if (options.cancellationToken?.cancelled || hasFailed) {
+      // Check cancellation or prior failure prior to starting action
+      const isCancelledNow = !!options.cancellationToken?.cancelled;
+      if (isCancelledNow || hasFailed) {
         const nowIso = new Date().toISOString();
         diagnostics.push({
           index: i,
           actionType: action.type,
           action,
-          status: options.cancellationToken?.cancelled ? 'cancelled' : 'skipped',
+          status: isCancelledNow ? 'cancelled' : 'skipped',
           startTime: nowIso,
           completionTime: nowIso,
           durationMs: 0,
-          error: options.cancellationToken?.cancelled ? 'Execution cancelled' : 'Skipped due to previous action failure',
+          error: isCancelledNow ? 'Execution cancelled' : 'Skipped due to previous action failure',
         });
         continue;
       }
@@ -122,7 +123,7 @@ export class ActionExecutor {
 
         hasFailed = true;
         if (!globalError) {
-          globalError = `Action[${i}] (${action.type}) failed: ${errorMessage}`;
+          globalError = isCancelled ? `Action[${i}] (${action.type}) cancelled` : `Action[${i}] (${action.type}) failed: ${errorMessage}`;
         }
       }
     }
@@ -219,10 +220,6 @@ export class ActionExecutor {
 
       default:
         throw new Error(`Unsupported action type: ${(action as { type: string }).type}`);
-    }
-
-    if (cancellationToken?.cancelled) {
-      throw new Error('Action execution cancelled');
     }
   }
 

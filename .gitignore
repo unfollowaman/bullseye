@@ -3,9 +3,17 @@
 /out/
 /build
 /dist
+tsconfig.tsbuildinfo
 
 # Node dependencies
 /node_modules/
+
+# SQLite databases and WAL files
+data/*.db
+data/*.db-wal
+data/*.db-shm
+*.db-wal
+*.db-shm
 
 # Captures output directory (ignore generated files but keep .gitkeep if needed)
 /public/captures/*

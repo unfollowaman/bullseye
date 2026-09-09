@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { checkFFmpegAvailability, validateWebM, validateMp4 } from '@/utils';
+import { checkFFmpegAvailability, getFFmpegBinaryPath, validateWebM, validateMp4 } from '@/utils';
 import { ffmpegConverter } from '@/capture/ffmpeg-converter';
 
 describe('Phase 11: FFmpeg Pipeline Unit Tests', () => {
@@ -14,8 +14,10 @@ describe('Phase 11: FFmpeg Pipeline Unit Tests', () => {
     fs.mkdirSync(tempDir, { recursive: true });
     sampleWebmPath = path.join(tempDir, 'sample-fixture.webm');
 
+    const ffmpegPath = getFFmpegBinaryPath();
+
     // Create a tiny deterministic 1-second WebM fixture file using FFmpeg lavfi
-    execFileSync('ffmpeg', [
+    execFileSync(ffmpegPath, [
       '-y',
       '-f',
       'lavfi',

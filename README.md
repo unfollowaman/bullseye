@@ -1,20 +1,20 @@
 # Bullseye — Local-First Screenshot & Video Capture Engine
 
-Bullseye is a local-first web application for website screenshots and screen recordings built with Next.js (App Router), TypeScript, Playwright, Node 22 native SQLite, and local FFmpeg.
+Bullseye is a local-first web application for high-quality website screenshots and screen recordings built with Next.js (App Router), TypeScript, Playwright, Node 22 native SQLite, and local FFmpeg.
 
 ## Features
 
 - **Screenshot Engine**: Viewport and full-page PNG capture with DPR control, CSS animation disabling, and custom wait stabilization.
 - **Screen Recording Engine**: Playwright native WebM recording with duration, custom viewport, and EBML container validation.
-- **FFmpeg Video Pipeline (Phase 11)**: Local WebM → MP4 conversion with configurable quality, timeout management, process cleanup, and original WebM preservation.
+- **FFmpeg Video Pipeline (Phase 11)**: Local WebM → MP4 conversion with quality presets, process cleanup, and original WebM preservation.
 - **Action Engine**: Interactive browser step execution (clicks, typing, hover, scrolling, waiting) prior to or during capture.
-- **Projects & History**: Organized projects, execution tracking with WebM and MP4 asset persistence, and SQLite database persistence.
-- **Device & Capture Presets**: Built-in and custom reusable capture options.
+- **Mockup Engine & Visual QA**: SVG vector composition, multi-format mockups, and pixel-by-pixel visual diffing.
+- **Production Hardening (Phase 15.1)**: Bounded concurrency, process isolation, SQLite WAL mode, URL scheme validation, path security, and idempotent cancellation.
 
 ## System Dependencies
 
 ### FFmpeg (Optional, for MP4 Conversion)
-For MP4 video conversion, FFmpeg must be installed on your local system:
+For MP4 video conversion, Bullseye uses system FFmpeg or bundled `ffmpeg-static`:
 
 ```bash
 # Ubuntu / Debian
@@ -25,6 +25,7 @@ brew install ffmpeg
 ```
 
 For complete FFmpeg details and licensing information, see [FFMPEG.md](./FFMPEG.md).
+For production hardening details and security policies, see [HARDENING.md](./HARDENING.md).
 
 ## Getting Started
 
